@@ -21,7 +21,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('Variabili d\'ambiente non valide:', parsed.error.format());
+  console.error("Variabili d'ambiente non valide:", parsed.error.format());
   process.exit(1);
 }
 
