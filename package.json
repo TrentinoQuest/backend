@@ -1,22 +1,49 @@
 {
-  "name": "trentino-quest-backend",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "@trentino-quest/backend",
+  "version": "0.1.0",
+  "description": "Backend REST API per Trentino Quest - Ingegneria del Software a.a. 2025-2026, Gruppo 19",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=22.0.0"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
+  },
+  "keywords": [
+    "trentino-quest",
+    "ingegneria-software",
+    "unitn",
+    "rest-api",
+    "express",
+    "typescript"
+  ],
+  "author": "Gruppo 19 - Valerio Cancemi, Federico Caposano",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TrentinoQuest/trentino-quest-backend.git"
+  },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^4.21.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^25.6.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.0",
+    "prettier": "^3.3.0",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^5.5.0"
   }
 }
