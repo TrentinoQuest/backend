@@ -12,7 +12,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
-  MONGODB_URI: z.string().optional(),
+  MONGODB_URI: z.string().url(),
+  DB_RETRY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
 
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN: z.string().default('7d'),
