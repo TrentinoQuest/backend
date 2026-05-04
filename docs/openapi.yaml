@@ -1,0 +1,170 @@
+openapi: 3.0.3
+info:
+  title: Trentino Quest API
+  description: |
+    REST API di Trentino Quest, app gamificata per l'esplorazione del Trentino.
+
+    Questa specifica è il contratto pubblico esposto dal backend Node.js verso
+    i client (mobile-app Ionic/Angular e backoffice Angular) ed è organizzata
+    secondo le interfacce dei componenti definiti nel Deliverable D2.
+
+    Stile architetturale REST (Fielding 2000):
+    - Addressability: URI resource-oriented sotto /api/v1/
+    - Uniform Interface: verbi HTTP standard con semantica idempotente
+    - Connectedness: campi _links nelle response per hypermedia
+    - Statelessness: autenticazione JWT, nessuna sessione lato server
+
+    Mapping interfacce D2 -> tag OpenAPI:
+    - IAuth                -> auth
+    - IPlayerProfile       -> player-profile
+    - IQuestCompletion     -> quest-completion
+    - IQuestAdmin          -> quest-admin
+    - IOperatorOps         -> operator-ops
+    - IQrValidation        -> qr-validation
+    - IBusinessSelfMgt     -> business-self-mgt
+    - IBusinessAdmin       -> business-admin
+    - ISocial              -> social
+    - IAnalytics           -> analytics
+  version: 0.1.0
+  contact:
+    name: Gruppo 19 - Trentino Quest
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Sviluppo locale
+
+tags:
+  - name: auth
+    description: |
+      Interfaccia IAuth fornita da AuthService.
+      Login, registrazione, logout, recovery password, verifica del ruolo utente.
+  - name: player-profile
+    description: |
+      Interfaccia IPlayerProfile fornita da QuestService.
+      Profilo del giocatore, collezionabili, punti, QR code personale.
+  - name: quest-completion
+    description: |
+      Interfaccia IQuestCompletion fornita da QuestService.
+      Visualizzazione mappa, dettagli quest, scansione QR con validazione GPS,
+      check-in geolocalizzato per quest secondarie.
+  - name: quest-admin
+    description: |
+      Interfaccia IQuestAdmin fornita da QuestService.
+      Creazione, modifica, disattivazione delle quest. Generazione e gestione
+      dei QR code. Pianificazione del piazzamento delle quest principali.
+  - name: operator-ops
+    description: |
+      Interfaccia IOperatorOps fornita da QuestService.
+      Registrazione posizione GPS dei QR code piazzati, aggiornamento coordinate,
+      segnalazione QR code mancanti o danneggiati.
+  - name: qr-validation
+    description: |
+      Interfaccia IQrValidation fornita da QuestService.
+      Validazione del QR code personale del giocatore presso un'Attivita Locale
+      per l'applicazione di uno sconto.
+  - name: business-self-mgt
+    description: |
+      Interfaccia IBusinessSelfMgt fornita da BusinessService.
+      Registrazione dell'Attivita Locale, gestione del profilo aziendale,
+      CRUD delle proprie offerte.
+  - name: business-admin
+    description: |
+      Interfaccia IBusinessAdmin fornita da BusinessService.
+      Visualizzazione, approvazione e rifiuto delle richieste di affiliazione
+      delle Attivita Locali.
+  - name: social
+    description: |
+      Interfaccia ISocial fornita da SocialService.
+      Gestione amicizie, classifiche social, feed di attivita.
+  - name: analytics
+    description: |
+      Interfaccia IAnalytics fornita da AnalyticsService.
+      Dashboard analitica per amministratori: flussi turistici, zone visitate,
+      stagionalita, statistiche aggregate.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token JWT ottenuto via POST /auth/login. Inviato in ogni richiesta
+        protetta nell'header Authorization. Il server non mantiene state di
+        sessione (statelessness REST).
+
+  schemas:
+    Links:
+      type: object
+      description: Hyperlinks ad altre risorse correlate (connectedness REST).
+      additionalProperties:
+        type: object
+        properties:
+          href:
+            type: string
+            format: uri
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: QUEST_ALREADY_COMPLETED
+        message:
+          type: string
+        details:
+          type: object
+
+    GeoPoint:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    PaginatedMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Token JWT mancante o non valido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: L'utente non ha i permessi per questa operazione.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Risorsa non trovata.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Input non valido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []
+
+paths: {}
