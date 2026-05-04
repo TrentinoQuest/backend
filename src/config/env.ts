@@ -15,7 +15,7 @@ const envSchema = z.object({
   MONGODB_URI: z.string().url(),
   DB_RETRY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
 
-  JWT_SECRET: z.string().optional(),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET deve essere lungo almeno 32 caratteri'),
   JWT_EXPIRES_IN: z.string().default('7d'),
 });
 
