@@ -6,6 +6,7 @@ import { logger } from './config/logger';
 import { requestLogger } from './middleware/request-logger';
 import { errorHandler } from './middleware/error-handler';
 import { createSwaggerRouter } from './middleware/swagger';
+import { createOpenApiValidator } from './middleware/openapi-validator';
 import {
   connectWithRetry,
   disconnectFromDatabase,
@@ -41,7 +42,13 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+// Documentazione OpenAPI: Swagger UI a /api/v1/docs e spec JSON a /api/v1/docs/openapi.json
 app.use('/api/v1', createSwaggerRouter());
+
+// Validazione automatica delle richieste contro lo schema OpenAPI.
+// Deve essere registrata DOPO Swagger UI (per non validare le sue route)
+// e PRIMA delle route applicative (per validarle tutte).
+app.use(createOpenApiValidator());
 
 // Le route dei moduli applicativi vengono registrate qui.
 // app.use('/api/v1/auth', authRoutes);

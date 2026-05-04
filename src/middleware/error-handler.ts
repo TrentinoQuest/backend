@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../utils/errors';
 import { logger } from '../config/logger';
+import { error as openApiError } from 'express-openapi-validator';
 
 /**
  * Middleware Express di error handling globale.
@@ -20,11 +21,31 @@ import { logger } from '../config/logger';
  */
 export function errorHandler(
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _next: NextFunction,
 ): void {
+  if (
+    err instanceof openApiError.BadRequest ||
+    err instanceof openApiError.Unauthorized ||
+    err instanceof openApiError.Forbidden ||
+    err instanceof openApiError.NotFound ||
+    err instanceof openApiError.MethodNotAllowed ||
+    err instanceof openApiError.NotAcceptable ||
+    err instanceof openApiError.UnsupportedMediaType ||
+    err instanceof openApiError.RequestEntityTooLarge ||
+    err instanceof openApiError.InternalServerError
+  ) {
+    logger.warn({ err, path: req.path }, 'OpenAPI validation error');
+    res.status(err.status).json({
+      code: 'OPENAPI_VALIDATION_ERROR',
+      message: err.message,
+      details: err.errors,
+    });
+    return;
+  }
+
   if (err instanceof AppError) {
     logger.warn({ err, code: err.code }, err.message);
     res.status(err.statusCode).json({
