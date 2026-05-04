@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { requestLogger } from './middleware/request-logger';
 import { errorHandler } from './middleware/error-handler';
+import { createSwaggerRouter } from './middleware/swagger';
 import {
   connectWithRetry,
   disconnectFromDatabase,
@@ -39,6 +40,8 @@ app.get('/health', (_req: Request, res: Response) => {
     },
   });
 });
+
+app.use('/api/v1', createSwaggerRouter());
 
 // Le route dei moduli applicativi vengono registrate qui.
 // app.use('/api/v1/auth', authRoutes);
