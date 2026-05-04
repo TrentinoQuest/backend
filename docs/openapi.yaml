@@ -138,6 +138,125 @@ components:
         limit: { type: integer }
         offset: { type: integer }
 
+    UserRole:
+      type: string
+      enum: [player, admin, business, maintenance]
+      description: |
+        Ruolo dell'utente nel sistema. Mappa la gerarchia di Utente del D2:
+        - player: Giocatore
+        - admin: Amministratore
+        - business: Attivita Locale (riservato, attivato dal modulo business)
+        - maintenance: Operatore Manutenzione (riservato, attivato dal modulo quests)
+
+    User:
+      type: object
+      description: |
+        Rappresentazione di base di un utente. I campi specifici del ruolo
+        vengono aggiunti tramite gli schemi Player e Admin.
+      required: [id, email, role, createdAt]
+      properties:
+        id:
+          type: string
+          example: 65f9a1b2c3d4e5f6a7b8c9d0
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        createdAt:
+          type: string
+          format: date-time
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    Player:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [username, totalPoints, registrationDate]
+          properties:
+            username:
+              type: string
+              minLength: 3
+              maxLength: 30
+            totalPoints:
+              type: integer
+              minimum: 0
+            registrationDate:
+              type: string
+              format: date-time
+
+    Admin:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [firstName, lastName]
+          properties:
+            firstName:
+              type: string
+            lastName:
+              type: string
+
+    RegisterPlayerRequest:
+      type: object
+      required: [email, password, username]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          format: password
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      description: |
+        Risposta restituita da register e login. Contiene il JWT da utilizzare
+        nelle richieste successive e la rappresentazione completa dell'utente
+        autenticato.
+      required: [token, user]
+      properties:
+        token:
+          type: string
+          description: JWT bearer token
+        expiresIn:
+          type: string
+          example: 7d
+          description: Durata di validità del token
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/Player'
+            - $ref: '#/components/schemas/Admin'
+          discriminator:
+            propertyName: role
+            mapping:
+              player: '#/components/schemas/Player'
+              admin: '#/components/schemas/Admin'
+
+    PasswordRecoveryRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
   responses:
     Unauthorized:
       description: Token JWT mancante o non valido.
@@ -163,8 +282,127 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Conflitto con lo stato corrente della risorsa.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
 security:
   - bearerAuth: []
 
-paths: {}
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Registra un nuovo Giocatore
+      description: |
+        Crea un nuovo account di tipo Giocatore.
+        L'endpoint NON richiede autenticazione preventiva.
+        In caso di successo restituisce un JWT pronto per l'uso, così che il
+        client possa procedere senza una chiamata di login separata.
+
+        La registrazione di Amministratori e Attivita Locali avviene tramite
+        flussi separati e non è esposta da questo endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPlayerRequest'
+      responses:
+        '201':
+          description: Giocatore registrato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email o username già in uso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Autentica un utente esistente
+      description: |
+        Verifica le credenziali fornite e, in caso di successo, restituisce
+        un JWT da utilizzare nelle richieste successive nell'header
+        Authorization come "Bearer <token>".
+
+        Funziona per qualsiasi ruolo (Giocatore, Amministratore).
+        Il discriminator nel campo user.role permette al client di
+        differenziare il comportamento in base al tipo di utente.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticazione riuscita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Credenziali non valide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Termina la sessione corrente
+      description: |
+        Invalida il JWT corrente lato server inserendolo in una blocklist
+        fino alla sua naturale scadenza. Il client deve comunque rimuovere
+        il token dalla propria storage locale.
+
+        Statelessness REST: questo endpoint non gestisce sessioni server-side
+        nel senso classico, ma una blocklist limitata ai token revocati prima
+        della loro scadenza.
+      responses:
+        '204':
+          description: Logout completato
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/password-recovery:
+    post:
+      tags: [auth]
+      summary: Richiede il recupero della password
+      description: |
+        Genera un token monouso di recupero password e invia all'utente
+        un link via email per impostarne una nuova.
+
+        Per motivi di sicurezza la risposta è sempre 202, indipendentemente
+        dall'esistenza dell'email nel sistema, per non rivelare quali email
+        sono registrate.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRecoveryRequest'
+      responses:
+        '202':
+          description: |
+            Richiesta accettata. Se l'email è registrata, l'utente riceverà
+            un link di recupero.
+        '400':
+          $ref: '#/components/responses/BadRequest'
