@@ -13,6 +13,7 @@ import {
   AuthResult,
 } from '../services/auth.service';
 import { IUser } from '../../../database/models/User.model';
+import type { AuthResponse } from '@trentino-quest/shared-types';
 
 /**
  * Serializza un utente per la response HTTP.
@@ -34,11 +35,11 @@ function serializeUser(user: IUser): Record<string, unknown> {
  * Costruisce la response standard per gli endpoint che ritornano un
  * AuthResult (register e login).
  */
-function buildAuthResponse(result: AuthResult): Record<string, unknown> {
+function buildAuthResponse(result: AuthResult): AuthResponse {
   return {
     token: result.token,
     expiresIn: result.expiresIn,
-    user: serializeUser(result.user),
+    user: serializeUser(result.user) as unknown as AuthResponse['user'],
   };
 }
 

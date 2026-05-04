@@ -1,5 +1,7 @@
 import { Schema, model, Document, Model } from 'mongoose';
 import bcrypt from 'bcrypt';
+import { UserRole } from '@trentino-quest/shared-types';
+export { UserRole };
 
 /**
  * Numero di round del salt per bcrypt.
@@ -7,19 +9,6 @@ import bcrypt from 'bcrypt';
  * (resistenza a brute force) e performance (tempo di hash accettabile).
  */
 const BCRYPT_SALT_ROUNDS = 12;
-
-/**
- * Ruoli supportati dal sistema.
- * Mappa direttamente la gerarchia di Utente nel Deliverable D2.
- * Solo PLAYER e ADMIN sono attivi in questa fase; gli altri ruoli verranno
- * abilitati con lo sviluppo dei rispettivi moduli (business, maintenance).
- */
-export enum UserRole {
-  PLAYER = 'player',
-  ADMIN = 'admin',
-  BUSINESS = 'business',
-  MAINTENANCE = 'maintenance',
-}
 
 /**
  * Interfaccia base condivisa da tutti i tipi di utente.

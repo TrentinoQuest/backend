@@ -39,6 +39,7 @@
     "url": "https://github.com/TrentinoQuest/trentino-quest-backend.git"
   },
   "dependencies": {
+    "@trentino-quest/shared-types": "github:TrentinoQuest/shared-types",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
