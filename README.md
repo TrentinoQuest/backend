@@ -1,5 +1,7 @@
 # Trentino Quest — Backend
 
+[![CI](https://github.com/TrentinoQuest/trentino-quest-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/TrentinoQuest/trentino-quest-backend/actions/workflows/ci.yml)
+
 Backend REST API per **Trentino Quest**, app gamificata per l'esplorazione del Trentino.
 
 Progetto del corso di **Ingegneria del Software** (a.a. 2025-2026), Università degli Studi di Trento, Prof. Sandro Fiore.
