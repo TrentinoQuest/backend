@@ -7,6 +7,7 @@ import { requestLogger } from './middleware/request-logger';
 import { errorHandler } from './middleware/error-handler';
 import { createSwaggerRouter } from './middleware/swagger';
 import { createOpenApiValidator } from './middleware/openapi-validator';
+import { createAuthRouter } from './modules/auth/routes/auth.routes';
 import {
   connectWithRetry,
   disconnectFromDatabase,
@@ -50,9 +51,8 @@ app.use('/api/v1', createSwaggerRouter());
 // e PRIMA delle route applicative (per validarle tutte).
 app.use(createOpenApiValidator());
 
-// Le route dei moduli applicativi vengono registrate qui.
-// app.use('/api/v1/auth', authRoutes);
-// app.use('/api/v1', questsRoutes);
+// Route dei moduli applicativi.
+app.use('/api/v1/auth', createAuthRouter());
 
 // L'error handler globale deve essere registrato come ultimo middleware,
 // dopo tutte le route, per intercettare gli errori propagati da next(err).
