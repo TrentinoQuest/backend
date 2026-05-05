@@ -13,7 +13,7 @@ import { z } from 'zod';
  */
 export const registerPlayerSchema = z
   .object({
-    email: z.string().trim().toLowerCase().email('Formato email non valido'),
+    email: z.string().trim().toLowerCase().check(z.email('Formato email non valido')),
     password: z
       .string()
       .min(8, 'La password deve contenere almeno 8 caratteri')
@@ -48,7 +48,7 @@ export type RegisterPlayerInput = z.infer<typeof registerPlayerSchema>;
  */
 export const loginSchema = z
   .object({
-    email: z.string().trim().toLowerCase().email('Formato email non valido'),
+    email: z.string().trim().toLowerCase().check(z.email('Formato email non valido')),
     password: z.string().min(1, 'Password obbligatoria'),
   })
   .strict();
@@ -66,7 +66,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
  */
 export const passwordRecoverySchema = z
   .object({
-    email: z.string().trim().toLowerCase().email('Formato email non valido'),
+    email: z.string().trim().toLowerCase().check(z.email('Formato email non valido')),
   })
   .strict();
 

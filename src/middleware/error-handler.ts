@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { AppError } from '../utils/errors';
 import { logger } from '../config/logger';
 import { error as openApiError } from 'express-openapi-validator';
@@ -19,13 +19,7 @@ import { error as openApiError } from 'express-openapi-validator';
  *
  * Va registrato come ultimo middleware in src/server.ts, dopo le routes.
  */
-export function errorHandler(
-  err: Error,
-  req: Request,
-  res: Response,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _next: NextFunction,
-): void {
+export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   if (
     err instanceof openApiError.BadRequest ||
     err instanceof openApiError.Unauthorized ||
@@ -57,11 +51,11 @@ export function errorHandler(
   }
 
   if (err instanceof ZodError) {
-    logger.warn({ err: err.format() }, 'Validation error');
+    logger.warn({ err: z.treeifyError(err) }, 'Validation error');
     res.status(400).json({
       code: 'VALIDATION_ERROR',
       message: 'Input non valido',
-      details: err.format(),
+      details: z.treeifyError(err),
     });
     return;
   }

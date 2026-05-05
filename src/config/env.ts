@@ -12,7 +12,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
-  MONGODB_URI: z.string().url(),
+  MONGODB_URI: z.url(),
   DB_RETRY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET deve essere lungo almeno 32 caratteri'),
@@ -22,7 +22,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error("Variabili d'ambiente non valide:", parsed.error.format());
+  console.error("Variabili d'ambiente non valide:", z.treeifyError(parsed.error));
   process.exit(1);
 }
 
