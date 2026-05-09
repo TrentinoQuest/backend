@@ -8,6 +8,7 @@ import { errorHandler } from './middleware/error-handler';
 import { createSwaggerRouter } from './middleware/swagger';
 import { createOpenApiValidator } from './middleware/openapi-validator';
 import { createAuthRouter } from './modules/auth/routes/auth.routes';
+import { startRefreshTokenCleanupJob } from './jobs/refresh-token-cleanup.job';
 import {
   connectWithRetry,
   disconnectFromDatabase,
@@ -95,6 +96,10 @@ async function start(): Promise<void> {
   process.removeListener('SIGTERM', onSigterm);
   process.removeListener('SIGINT', onSigint);
 
+  // Job periodico di cleanup dei refresh token scaduti o revocati da molto tempo.
+  // Avviato dopo la connessione al DB per evitare errori sulla prima esecuzione.
+  const stopCleanupJob = startRefreshTokenCleanupJob();
+
   const server = app.listen(env.PORT, () => {
     logger.info(`Trentino Quest backend listening on port ${env.PORT} (${env.NODE_ENV})`);
   });
@@ -105,9 +110,12 @@ async function start(): Promise<void> {
    * Alla ricezione di un segnale di terminazione, il server smette di
    * accettare nuove connessioni, attende il completamento delle richieste
    * in corso, chiude la connessione al database e termina il processo.
+   * Il cleanup job viene fermato per primo per evitare esecuzioni durante
+   * la chiusura.
    */
   const shutdown = (signal: string): void => {
     logger.info(`Ricevuto ${signal}, avvio shutdown ordinato`);
+    stopCleanupJob();
     server.close((err) => {
       if (err) {
         logger.error({ err }, 'Errore durante la chiusura del server HTTP');

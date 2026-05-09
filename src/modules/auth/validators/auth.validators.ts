@@ -13,7 +13,7 @@ import { z } from 'zod';
  */
 export const registerPlayerSchema = z
   .object({
-    email: z.string().trim().toLowerCase().check(z.email('Formato email non valido')),
+    email: z.string().trim().toLowerCase().email('Formato email non valido'),
     password: z
       .string()
       .min(8, 'La password deve contenere almeno 8 caratteri')
@@ -48,7 +48,7 @@ export type RegisterPlayerInput = z.infer<typeof registerPlayerSchema>;
  */
 export const loginSchema = z
   .object({
-    email: z.string().trim().toLowerCase().check(z.email('Formato email non valido')),
+    email: z.string().trim().toLowerCase().email('Formato email non valido'),
     password: z.string().min(1, 'Password obbligatoria'),
   })
   .strict();
@@ -59,18 +59,53 @@ export const loginSchema = z
 export type LoginInput = z.infer<typeof loginSchema>;
 
 /**
- * Validator zod per la richiesta di recovery password.
+ * Validator zod per la richiesta di password recovery.
  *
  * Accetta solo l'email del destinatario. La normalizzazione lowercase+trim
  * mantiene la consistenza con il login.
  */
 export const passwordRecoverySchema = z
   .object({
-    email: z.string().trim().toLowerCase().check(z.email('Formato email non valido')),
+    email: z.string().trim().toLowerCase().email('Formato email non valido'),
   })
   .strict();
 
 /**
- * Tipo TypeScript inferito dallo schema di recovery password.
+ * Tipo TypeScript inferito dallo schema di password recovery.
  */
 export type PasswordRecoveryInput = z.infer<typeof passwordRecoverySchema>;
+
+/**
+ * Validator zod per la richiesta di refresh dei token.
+ *
+ * Accetta il refresh token come stringa non vuota. La validazione
+ * crittografica (hash, lookup, scadenza) avviene nel service.
+ */
+export const refreshTokenSchema = z
+  .object({
+    refreshToken: z.string().min(1, 'Refresh token obbligatorio'),
+  })
+  .strict();
+
+/**
+ * Tipo TypeScript inferito dallo schema di refresh token.
+ */
+export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
+
+/**
+ * Validator zod per la richiesta di logout.
+ *
+ * Strutturalmente identica alla richiesta di refresh: il client invia il
+ * refresh token che vuole revocare. Tipo separato per chiarezza nei
+ * controller e nelle eventuali evoluzioni future del payload.
+ */
+export const logoutSchema = z
+  .object({
+    refreshToken: z.string().min(1, 'Refresh token obbligatorio'),
+  })
+  .strict();
+
+/**
+ * Tipo TypeScript inferito dallo schema di logout.
+ */
+export type LogoutInput = z.infer<typeof logoutSchema>;
