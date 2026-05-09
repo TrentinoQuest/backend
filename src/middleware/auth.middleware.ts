@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError, ForbiddenError } from '../utils/errors';
 import { IUser, UserRole } from '../database/models/User.model';
-import { verifyToken, loadUserFromPayload } from '../modules/auth/services/auth.service';
+import { verifyAccessToken, loadUserFromPayload } from '../modules/auth/services/auth.service';
 
 /**
  * Estensione del tipo Request di Express per includere l'utente autenticato.
@@ -56,7 +56,7 @@ export async function authenticate(
       throw new UnauthorizedError('Token JWT mancante', 'TOKEN_MISSING');
     }
 
-    const payload = verifyToken(token);
+    const payload = verifyAccessToken(token);
     const user = await loadUserFromPayload(payload);
 
     req.user = user;

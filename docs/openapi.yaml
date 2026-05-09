@@ -25,7 +25,14 @@ info:
     - IBusinessAdmin       -> business-admin
     - ISocial              -> social
     - IAnalytics           -> analytics
-  version: 0.1.0
+
+    Pattern di autenticazione: access token + refresh token.
+    L'access token (JWT, TTL 15 minuti) viene allegato a tutte le richieste
+    autenticate nell'header Authorization. Il refresh token (stringa opaque,
+    TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
+    token. La rotation dei refresh token e' attiva: ogni chiamata a
+    /auth/refresh emette un nuovo refresh token e revoca quello precedente.
+  version: 0.2.0
   contact:
     name: Gruppo 19 - Trentino Quest
 
@@ -89,9 +96,10 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Token JWT ottenuto via POST /auth/login. Inviato in ogni richiesta
-        protetta nell'header Authorization. Il server non mantiene state di
-        sessione (statelessness REST).
+        Access token JWT ottenuto via POST /auth/login. Inviato in ogni
+        richiesta protetta nell'header Authorization come "Bearer <token>".
+        Vita breve (15 minuti) per limitare il rischio in caso di intercettazione.
+        Il rinnovo avviene tramite POST /auth/refresh usando il refresh token.
 
   schemas:
     Links:
@@ -227,18 +235,22 @@ components:
     AuthResponse:
       type: object
       description: |
-        Risposta restituita da register e login. Contiene il JWT da utilizzare
-        nelle richieste successive e la rappresentazione completa dell'utente
-        autenticato.
-      required: [token, user]
+        Risposta restituita da register e login. Contiene la coppia di token
+        access+refresh e l'utente autenticato.
+      required: [accessToken, refreshToken, accessExpiresIn, refreshExpiresIn, user]
       properties:
-        token:
+        accessToken:
           type: string
-          description: JWT bearer token
-        expiresIn:
+          description: JWT con TTL breve, da allegare alle richieste API
+        refreshToken:
           type: string
-          example: 7d
-          description: Durata di validità del token
+          description: Token opaque con TTL lungo, da usare per rinnovare l'access
+        accessExpiresIn:
+          type: string
+          example: 15m
+        refreshExpiresIn:
+          type: string
+          example: 30d
         user:
           oneOf:
             - $ref: '#/components/schemas/Player'
@@ -248,6 +260,39 @@ components:
             mapping:
               player: '#/components/schemas/Player'
               admin: '#/components/schemas/Admin'
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    RefreshTokenResponse:
+      type: object
+      description: |
+        Risposta dell'endpoint /auth/refresh. Contiene la nuova coppia di
+        token. Il refresh token precedente viene revocato (rotation) e non
+        e' piu' utilizzabile.
+      required: [accessToken, refreshToken, accessExpiresIn, refreshExpiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        accessExpiresIn:
+          type: string
+          example: 15m
+        refreshExpiresIn:
+          type: string
+          example: 30d
+
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
 
     PasswordRecoveryRequest:
       type: object
@@ -300,11 +345,12 @@ paths:
       description: |
         Crea un nuovo account di tipo Giocatore.
         L'endpoint NON richiede autenticazione preventiva.
-        In caso di successo restituisce un JWT pronto per l'uso, così che il
-        client possa procedere senza una chiamata di login separata.
+        In caso di successo restituisce la coppia access+refresh token pronta
+        per l'uso, cosi' che il client possa procedere senza una chiamata di
+        login separata.
 
         La registrazione di Amministratori e Attivita Locali avviene tramite
-        flussi separati e non è esposta da questo endpoint.
+        flussi separati e non e' esposta da questo endpoint.
       security: []
       requestBody:
         required: true
@@ -322,7 +368,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-          description: Email o username già in uso
+          description: Email o username gia' in uso
           content:
             application/json:
               schema:
@@ -334,12 +380,10 @@ paths:
       summary: Autentica un utente esistente
       description: |
         Verifica le credenziali fornite e, in caso di successo, restituisce
-        un JWT da utilizzare nelle richieste successive nell'header
-        Authorization come "Bearer <token>".
-
-        Funziona per qualsiasi ruolo (Giocatore, Amministratore).
-        Il discriminator nel campo user.role permette al client di
-        differenziare il comportamento in base al tipo di utente.
+        una coppia access+refresh token. L'access token va inviato come
+        "Bearer <token>" nell'header Authorization delle richieste successive.
+        Il refresh token va conservato in storage persistente sul client e
+        usato solo verso /auth/refresh per rinnovare l'access token.
       security: []
       requestBody:
         required: true
@@ -363,23 +407,63 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rinnova la coppia di token
+      description: |
+        Riceve il refresh token corrente e, se valido, emette una nuova
+        coppia access+refresh token. Il refresh token vecchio viene revocato
+        (rotation): ogni refresh token e' utilizzabile una sola volta.
+
+        Risponde 401 se il refresh token e' assente, sconosciuto, scaduto
+        o gia' revocato. In tal caso il client deve scartare entrambi i
+        token e procedere con un nuovo login.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Nuova coppia di token emessa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Refresh token non valido, scaduto o revocato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /auth/logout:
     post:
       tags: [auth]
       summary: Termina la sessione corrente
       description: |
-        Invalida il JWT corrente lato server inserendolo in una blocklist
-        fino alla sua naturale scadenza. Il client deve comunque rimuovere
-        il token dalla propria storage locale.
-
-        Statelessness REST: questo endpoint non gestisce sessioni server-side
-        nel senso classico, ma una blocklist limitata ai token revocati prima
-        della loro scadenza.
+        Revoca il refresh token specificato impedendone ulteriori utilizzi.
+        L'access token resta tecnicamente valido fino alla sua scadenza
+        naturale (15 minuti), ma senza refresh token attivo l'utente non
+        puo' rinnovarlo: la sessione termina di fatto entro la finestra
+        dell'access token corrente.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
       responses:
         '204':
           description: Logout completato
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /auth/password-recovery:
     post:
