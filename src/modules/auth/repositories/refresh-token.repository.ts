@@ -80,3 +80,23 @@ export async function revokeAllRefreshTokensForUser(userId: Types.ObjectId): Pro
   );
   return result.modifiedCount;
 }
+
+/**
+ * Cancella dal database i refresh token che non hanno piu' utilita':
+ * - quelli con expiresAt nel passato (gia' inutilizzabili)
+ * - quelli revocati da piu' di 7 giorni (mantenuti per audit fino a quel
+ *   momento, poi eliminati definitivamente)
+ *
+ * Ritorna il numero totale di documenti eliminati. Eseguito periodicamente
+ * dal cleanup job.
+ */
+export async function deleteStaleRefreshTokens(): Promise<number> {
+  const now = new Date();
+  const auditRetentionMs = 7 * 24 * 60 * 60 * 1000;
+  const auditCutoff = new Date(now.getTime() - auditRetentionMs);
+
+  const result = await RefreshToken.deleteMany({
+    $or: [{ expiresAt: { $lt: now } }, { revokedAt: { $lt: auditCutoff } }],
+  });
+  return result.deletedCount ?? 0;
+}
