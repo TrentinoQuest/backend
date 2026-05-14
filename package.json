@@ -37,7 +37,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/TrentinoQuest/trentino-quest-backend.git"
+    "url": "https://github.com/TrentinoQuest/backend.git"
   },
   "dependencies": {
     "@trentino-quest/shared-types": "github:TrentinoQuest/shared-types",
