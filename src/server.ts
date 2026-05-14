@@ -8,6 +8,7 @@ import { errorHandler } from './middleware/error-handler';
 import { createSwaggerRouter } from './middleware/swagger';
 import { createOpenApiValidator } from './middleware/openapi-validator';
 import { createAuthRouter } from './modules/auth/routes/auth.routes';
+import { createQuestsRouter } from './modules/quests/routes/quests.routes';
 import { startRefreshTokenCleanupJob } from './jobs/refresh-token-cleanup.job';
 import {
   connectWithRetry,
@@ -54,6 +55,9 @@ app.use(createOpenApiValidator());
 
 // Route dei moduli applicativi.
 app.use('/api/v1/auth', createAuthRouter());
+
+// Le route del modulo quests sono tutte sotto /api/v1/quests, incluse quelle
+app.use('/api/v1', createQuestsRouter());
 
 // L'error handler globale deve essere registrato come ultimo middleware,
 // dopo tutte le route, per intercettare gli errori propagati da next(err).
