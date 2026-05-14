@@ -302,6 +302,207 @@ components:
           type: string
           format: email
 
+    QuestType:
+      type: string
+      enum: [primary, secondary]
+      description: |
+        Tipo di quest:
+        - primary: con QR code nascosto, sblocca un collezionabile
+        - secondary: con check-in geolocalizzato, solo punti
+
+    QuestStatus:
+      type: string
+      enum: [active, inactive, archived]
+      description: Stato del ciclo di vita della quest.
+
+    CollectibleRarity:
+      type: string
+      enum: [common, uncommon, rare, legendary]
+
+    QuestBase:
+      type: object
+      description: Campi comuni a tutte le tipologie di quest.
+      required: [id, name, description, type, status, basePoints, createdAt]
+      properties:
+        id:
+          type: string
+          example: 65f9a1b2c3d4e5f6a7b8c9d0
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestType'
+        status:
+          $ref: '#/components/schemas/QuestStatus'
+        basePoints:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    PrimaryQuest:
+      allOf:
+        - $ref: '#/components/schemas/QuestBase'
+        - type: object
+          required: [type, searchArea, searchRadiusMeters, collectibleId]
+          properties:
+            type:
+              type: string
+              enum: [primary]
+            searchArea:
+              $ref: '#/components/schemas/GeoPoint'
+            searchRadiusMeters:
+              type: integer
+              minimum: 10
+              maximum: 10000
+            collectibleId:
+              type: string
+              nullable: true
+
+    SecondaryQuest:
+      allOf:
+        - $ref: '#/components/schemas/QuestBase'
+        - type: object
+          required: [type, position, checkInRadiusMeters]
+          properties:
+            type:
+              type: string
+              enum: [secondary]
+            position:
+              $ref: '#/components/schemas/GeoPoint'
+            checkInRadiusMeters:
+              type: integer
+              minimum: 5
+              maximum: 500
+
+    AnyQuest:
+      oneOf:
+        - $ref: '#/components/schemas/PrimaryQuest'
+        - $ref: '#/components/schemas/SecondaryQuest'
+      discriminator:
+        propertyName: type
+        mapping:
+          primary: '#/components/schemas/PrimaryQuest'
+          secondary: '#/components/schemas/SecondaryQuest'
+
+    Collectible:
+      type: object
+      required: [id, name, description, imageUrl, rarity, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+        rarity:
+          $ref: '#/components/schemas/CollectibleRarity'
+        createdAt:
+          type: string
+          format: date-time
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    CollectibleEntry:
+      type: object
+      required: [collectible, unlockedAt]
+      properties:
+        collectible:
+          $ref: '#/components/schemas/Collectible'
+        unlockedAt:
+          type: string
+          format: date-time
+
+    Completion:
+      type: object
+      required: [id, questId, pointsAwarded, position, completedAt]
+      properties:
+        id:
+          type: string
+        questId:
+          type: string
+        pointsAwarded:
+          type: integer
+          minimum: 0
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        completedAt:
+          type: string
+          format: date-time
+
+    CompletionEntry:
+      type: object
+      required: [completion, quest]
+      properties:
+        completion:
+          $ref: '#/components/schemas/Completion'
+        quest:
+          $ref: '#/components/schemas/AnyQuest'
+
+    ProgressSummary:
+      type: object
+      required: [totalQuests, completedQuests, percentage]
+      properties:
+        totalQuests:
+          type: integer
+        completedQuests:
+          type: integer
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+
+    CheckInRequest:
+      type: object
+      required: [position]
+      properties:
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+
+    CheckInResponse:
+      type: object
+      required: [completion, pointsAwarded, totalPoints, distanceFromTargetMeters]
+      properties:
+        completion:
+          $ref: '#/components/schemas/Completion'
+        pointsAwarded:
+          type: integer
+        totalPoints:
+          type: integer
+        distanceFromTargetMeters:
+          type: number
+
+    ScanQrRequest:
+      type: object
+      required: [qrToken, position]
+      properties:
+        qrToken:
+          type: string
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+
+    ScanQrResponse:
+      type: object
+      required: [completion, pointsAwarded, totalPoints, collectible, distanceFromTargetMeters]
+      properties:
+        completion:
+          $ref: '#/components/schemas/Completion'
+        pointsAwarded:
+          type: integer
+        totalPoints:
+          type: integer
+        collectible:
+          $ref: '#/components/schemas/Collectible'
+        distanceFromTargetMeters:
+          type: number
+
   responses:
     Unauthorized:
       description: Token JWT mancante o non valido.
@@ -490,3 +691,218 @@ paths:
             un link di recupero.
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /quests:
+    get:
+      tags: [quest-completion]
+      summary: Lista delle quest visibili
+      description: |
+        Restituisce l'elenco delle quest attive. Supporta filtri opzionali
+        per posizione (bounding box) e per tipo. Usato dal client mobile
+        per popolare la mappa.
+      parameters:
+        - name: lat
+          in: query
+          schema: { type: number }
+          description: Latitudine del centro per filtro geografico
+        - name: lng
+          in: query
+          schema: { type: number }
+          description: Longitudine del centro per filtro geografico
+        - name: radiusMeters
+          in: query
+          schema: { type: integer, minimum: 100, maximum: 50000 }
+          description: Raggio in metri dal centro per filtro geografico
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestType'
+          description: Filtra solo quest principali o solo secondarie
+      responses:
+        '200':
+          description: Lista delle quest
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /quests/{id}:
+    get:
+      tags: [quest-completion]
+      summary: Dettagli di una quest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettagli della quest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /quests/{id}/check-in:
+    post:
+      tags: [quest-completion]
+      summary: Completa una quest secondaria con check-in geolocalizzato
+      description: |
+        Verifica che il giocatore si trovi entro il raggio di check-in della
+        quest specificata e registra il completamento. Risponde con i punti
+        assegnati e la distanza GPS dal target.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '201':
+          description: Check-in completato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quest gia' completata o fuori raggio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /quests/{id}/scan:
+    post:
+      tags: [quest-completion]
+      summary: Completa una quest principale tramite scansione QR
+      description: |
+        Verifica il token del QR code scansionato e la posizione GPS del
+        giocatore. Se entrambi validi, registra il completamento, assegna
+        punti e sblocca il collezionabile associato.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanQrRequest'
+      responses:
+        '201':
+          description: Scansione completata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanQrResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quest gia' completata, token non valido o fuori raggio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /player/me:
+    get:
+      tags: [player-profile]
+      summary: Profilo del giocatore autenticato
+      responses:
+        '200':
+          description: Profilo del giocatore
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/completions:
+    get:
+      tags: [player-profile]
+      summary: Feed dei completamenti del giocatore
+      description: |
+        Restituisce i completamenti effettuati dal giocatore in ordine
+        cronologico decrescente, con i dati della quest associata.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Lista dei completamenti
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompletionEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/collection:
+    get:
+      tags: [player-profile]
+      summary: Album dei collezionabili del giocatore
+      responses:
+        '200':
+          description: Lista dei collezionabili sbloccati
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CollectibleEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/progress:
+    get:
+      tags: [player-profile]
+      summary: Progressi del giocatore
+      description: |
+        Restituisce un riepilogo dei progressi del giocatore sull'intero
+        territorio o su una zona specifica.
+      parameters:
+        - name: zone
+          in: query
+          schema: { type: string }
+          description: Identificativo zona (se omesso, restituisce il totale regione)
+      responses:
+        '200':
+          description: Riepilogo progressi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
