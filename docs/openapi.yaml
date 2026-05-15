@@ -1222,3 +1222,25 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /admin/collectibles:
+    get:
+      tags: [quest-admin]
+      summary: Lista tutti i collezionabili (admin)
+      description: |
+        Restituisce la lista completa dei collezionabili nel sistema.
+        Usato principalmente per popolare il dropdown nella schermata
+        di creazione/modifica di una quest principale.
+      responses:
+        '200':
+          description: Lista collezionabili
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Collectible'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
