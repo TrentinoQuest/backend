@@ -36,13 +36,18 @@ const baseQuestFields = {
 
 /**
  * Validator zod per la creazione di una quest secondaria via admin.
+ *
+ * Il raggio di check-in e' limitato a 5-20 metri: i giocatori devono
+ * essere fisicamente vicini al punto di interesse, non genericamente
+ * "in zona". Range piu' ampi snaturerebbero la meccanica del check-in
+ * geolocalizzato.
  */
 export const createSecondaryQuestSchema = z
   .object({
     type: z.literal(QuestType.SECONDARY),
     ...baseQuestFields,
     position: geoPointSchema,
-    checkInRadiusMeters: z.number().int().min(5).max(500),
+    checkInRadiusMeters: z.number().int().min(5).max(20),
   })
   .strict();
 
@@ -54,13 +59,18 @@ export type CreateSecondaryQuestInput = z.infer<typeof createSecondaryQuestSchem
  * Non include exactPosition, qrToken, validationRadiusMeters: l'admin
  * imposta solo l'area di ricerca; il piazzamento esatto e' a carico
  * dell'operatore.
+ *
+ * Il raggio dell'area di ricerca e' limitato a 10-60 metri: deve
+ * essere sufficientemente piccolo da rendere il QR effettivamente
+ * "cercabile" dal giocatore, ma non cosi' piccolo da rivelarne la
+ * posizione esatta.
  */
 export const createPrimaryQuestSchema = z
   .object({
     type: z.literal(QuestType.PRIMARY),
     ...baseQuestFields,
     searchArea: geoPointSchema,
-    searchRadiusMeters: z.number().int().min(10).max(10000),
+    searchRadiusMeters: z.number().int().min(10).max(60),
     collectibleId: z
       .string()
       .regex(/^[a-f0-9]{24}$/i)
@@ -90,7 +100,8 @@ export type CreateQuestInput = z.infer<typeof createQuestSchema>;
  *
  * Tutti i campi sono opzionali. Il service verifica che i campi
  * specifici di un tipo (es. searchArea per primary) siano applicati
- * solo a quest del tipo corretto.
+ * solo a quest del tipo corretto. I range numerici sono coerenti con
+ * quelli usati in creazione.
  */
 export const updateQuestSchema = z
   .object({
@@ -98,14 +109,14 @@ export const updateQuestSchema = z
     description: z.string().trim().min(1).max(1000).optional(),
     basePoints: z.number().int().min(0).optional(),
     searchArea: geoPointSchema.optional(),
-    searchRadiusMeters: z.number().int().min(10).max(10000).optional(),
+    searchRadiusMeters: z.number().int().min(10).max(60).optional(),
     collectibleId: z
       .string()
       .regex(/^[a-f0-9]{24}$/i)
       .nullable()
       .optional(),
     position: geoPointSchema.optional(),
-    checkInRadiusMeters: z.number().int().min(5).max(500).optional(),
+    checkInRadiusMeters: z.number().int().min(5).max(20).optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {
