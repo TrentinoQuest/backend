@@ -143,3 +143,158 @@ export function isPrimaryQuest(quest: IQuest): quest is IPrimaryQuest {
 export function isSecondaryQuest(quest: IQuest): quest is ISecondaryQuest {
   return quest.type === QuestType.SECONDARY;
 }
+
+import { PrimaryQuest, SecondaryQuest } from '../../../database/models/Quest.model';
+
+/**
+ * Input per la creazione di una quest secondaria.
+ *
+ * Lo status di default e' INACTIVE: la quest viene attivata esplicitamente
+ * solo quando l'admin la rende disponibile ai giocatori.
+ */
+export interface CreateSecondaryQuestInput {
+  name: string;
+  description: string;
+  basePoints: number;
+  position: GeoJsonPoint;
+  checkInRadiusMeters: number;
+  status?: QuestStatus;
+}
+
+/**
+ * Input per la creazione di una quest principale.
+ *
+ * NON include exactPosition, qrToken, validationRadiusMeters: questi
+ * campi vengono popolati successivamente dal flusso operatore.
+ */
+export interface CreatePrimaryQuestInput {
+  name: string;
+  description: string;
+  basePoints: number;
+  searchArea: GeoJsonPoint;
+  searchRadiusMeters: number;
+  collectibleId?: Types.ObjectId | null;
+  status?: QuestStatus;
+}
+
+/**
+ * Crea una nuova quest secondaria nel database.
+ */
+export async function createSecondaryQuest(
+  input: CreateSecondaryQuestInput,
+): Promise<ISecondaryQuest> {
+  return SecondaryQuest.create({
+    name: input.name,
+    description: input.description,
+    basePoints: input.basePoints,
+    position: input.position,
+    checkInRadiusMeters: input.checkInRadiusMeters,
+    status: input.status ?? QuestStatus.INACTIVE,
+  });
+}
+
+/**
+ * Crea una nuova quest principale nel database.
+ */
+export async function createPrimaryQuest(input: CreatePrimaryQuestInput): Promise<IPrimaryQuest> {
+  return PrimaryQuest.create({
+    name: input.name,
+    description: input.description,
+    basePoints: input.basePoints,
+    searchArea: input.searchArea,
+    searchRadiusMeters: input.searchRadiusMeters,
+    collectibleId: input.collectibleId ?? null,
+    status: input.status ?? QuestStatus.INACTIVE,
+  });
+}
+
+/**
+ * Input per l'aggiornamento di una quest esistente.
+ *
+ * Tutti i campi sono opzionali. I campi specifici di un tipo (es.
+ * searchArea per le primary) vanno applicati solo a quest di quel tipo:
+ * la validazione e' responsabilita' del service.
+ */
+export interface UpdateQuestInput {
+  name?: string;
+  description?: string;
+  basePoints?: number;
+  searchArea?: GeoJsonPoint;
+  searchRadiusMeters?: number;
+  collectibleId?: Types.ObjectId | null;
+  position?: GeoJsonPoint;
+  checkInRadiusMeters?: number;
+}
+
+/**
+ * Aggiorna i campi specificati di una quest esistente.
+ *
+ * Ritorna il documento aggiornato o null se l'id non esiste. Usa
+ * findByIdAndUpdate con runValidators per applicare gli stessi vincoli
+ * di validazione del create.
+ */
+export async function updateQuest(id: string, input: UpdateQuestInput): Promise<IQuest | null> {
+  if (!Types.ObjectId.isValid(id)) {
+    return null;
+  }
+  return Quest.findByIdAndUpdate(id, input, { new: true, runValidators: true });
+}
+
+/**
+ * Aggiorna lo status di una quest. Usato per activate/deactivate/archive.
+ */
+export async function setQuestStatus(id: string, status: QuestStatus): Promise<IQuest | null> {
+  if (!Types.ObjectId.isValid(id)) {
+    return null;
+  }
+  return Quest.findByIdAndUpdate(id, { status }, { new: true });
+}
+
+/**
+ * Filtri per la lista admin delle quest.
+ *
+ * Diversamente dal filtro player-side, qui lo status puo' essere
+ * qualsiasi valore (inclusi INACTIVE e ARCHIVED): l'admin deve poter
+ * vedere tutte le quest del sistema, non solo quelle visibili ai
+ * giocatori.
+ */
+export interface ListQuestsAdminFilter {
+  type?: QuestType;
+  status?: QuestStatus;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Risultato paginato per la lista admin.
+ */
+export interface ListQuestsAdminResult {
+  data: IQuest[];
+  total: number;
+}
+
+/**
+ * Restituisce la lista paginata delle quest per l'amministratore.
+ *
+ * Diversamente da listQuests del player-side, accetta uno status
+ * esplicito (puo' essere INACTIVE o ARCHIVED) e non applica filtri
+ * geografici.
+ */
+export async function listQuestsAdmin(
+  filter: ListQuestsAdminFilter,
+): Promise<ListQuestsAdminResult> {
+  const query: Record<string, unknown> = {};
+  if (filter.type) {
+    query.type = filter.type;
+  }
+  if (filter.status) {
+    query.status = filter.status;
+  }
+
+  const [data, total] = await Promise.all([
+    Quest.find(query).sort({ createdAt: -1 }).skip(filter.offset).limit(filter.limit),
+    Quest.countDocuments(query),
+  ]);
+
+  return { data, total };
+}
