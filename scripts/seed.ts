@@ -25,6 +25,7 @@ import {
 } from '../src/database/models/Quest.model';
 import { Collectible, CollectibleRarity } from '../src/database/models/Collectible.model';
 import { randomBytes } from 'node:crypto';
+import { Admin, UserRole } from '../src/database/models/User.model';
 
 /**
  * Genera un token QR random per le quest principali di esempio.
@@ -206,6 +207,35 @@ async function seedPrimaryQuests(collectibleIds: {
 }
 
 /**
+ * Inserisce un utente admin di default con credenziali note.
+ *
+ * Se l'utente esiste gia' (riconosciuto per email), non viene
+ * sovrascritto: questo permette di rieseguire il seed senza perdere
+ * l'admin esistente. La password viene hashata automaticamente dal
+ * middleware pre-save del modello User.
+ *
+ * Credenziali: admin@trentinoquest.local / AdminPass123
+ */
+async function seedAdminUser(): Promise<void> {
+  const email = 'admin@trentinoquest.local';
+  const existing = await Admin.findOne({ email });
+  if (existing) {
+    logger.info({ email }, "Admin gia' esistente, skip");
+    return;
+  }
+
+  await Admin.create({
+    email,
+    password: 'AdminPass123',
+    role: UserRole.ADMIN,
+    firstName: 'Admin',
+    lastName: 'Trentino',
+  });
+
+  logger.info({ email }, 'Admin creato (credenziali: admin@trentinoquest.local / AdminPass123)');
+}
+
+/**
  * Punto di ingresso dello script.
  */
 async function run(): Promise<void> {
@@ -218,6 +248,8 @@ async function run(): Promise<void> {
     if (shouldClean) {
       await cleanCollections();
     }
+
+    await seedAdminUser();
 
     const collectibleIds = await seedCollectibles();
     await seedSecondaryQuests();
