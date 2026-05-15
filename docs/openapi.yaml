@@ -503,6 +503,120 @@ components:
         distanceFromTargetMeters:
           type: number
 
+    CreateSecondaryQuestRequest:
+      type: object
+      required: [type, name, description, basePoints, position, checkInRadiusMeters]
+      properties:
+        type:
+          type: string
+          enum: [secondary]
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        basePoints:
+          type: integer
+          minimum: 0
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        checkInRadiusMeters:
+          type: integer
+          minimum: 5
+          maximum: 500
+
+    CreatePrimaryQuestRequest:
+      type: object
+      required: [type, name, description, basePoints, searchArea, searchRadiusMeters]
+      properties:
+        type:
+          type: string
+          enum: [primary]
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        basePoints:
+          type: integer
+          minimum: 0
+        searchArea:
+          $ref: '#/components/schemas/GeoPoint'
+        searchRadiusMeters:
+          type: integer
+          minimum: 10
+          maximum: 10000
+        collectibleId:
+          type: string
+          nullable: true
+
+    CreateQuestRequest:
+      oneOf:
+        - $ref: '#/components/schemas/CreateSecondaryQuestRequest'
+        - $ref: '#/components/schemas/CreatePrimaryQuestRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          secondary: '#/components/schemas/CreateSecondaryQuestRequest'
+          primary: '#/components/schemas/CreatePrimaryQuestRequest'
+
+    UpdateQuestRequest:
+      type: object
+      description: |
+        Aggiornamento parziale di una quest. Almeno un campo deve essere
+        fornito. I campi specifici di un tipo (searchArea/searchRadiusMeters/
+        collectibleId per primary, position/checkInRadiusMeters per secondary)
+        possono essere applicati solo a quest del tipo corretto.
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        basePoints:
+          type: integer
+          minimum: 0
+        searchArea:
+          $ref: '#/components/schemas/GeoPoint'
+        searchRadiusMeters:
+          type: integer
+          minimum: 10
+          maximum: 10000
+        collectibleId:
+          type: string
+          nullable: true
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        checkInRadiusMeters:
+          type: integer
+          minimum: 5
+          maximum: 500
+
+    ListAdminQuestsResponse:
+      type: object
+      required: [data, total, limit, offset]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnyQuest'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
   responses:
     Unauthorized:
       description: Token JWT mancante o non valido.
@@ -906,3 +1020,205 @@ paths:
                 $ref: '#/components/schemas/ProgressSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /admin/quests:
+    get:
+      tags: [quest-admin]
+      summary: Lista paginata delle quest (admin)
+      description: |
+        Restituisce l'elenco completo delle quest indipendentemente dallo
+        status (active, inactive, archived). Supporta filtri per tipo e
+        status e paginazione offset/limit.
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestType'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestStatus'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Lista paginata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAdminQuestsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [quest-admin]
+      summary: Crea una nuova quest
+      description: |
+        Crea una quest secondaria o principale in base al campo type del
+        payload. Le quest principali create non hanno ancora exactPosition,
+        qrToken e validationRadiusMeters: questi vengono popolati
+        dall'operatore al momento del piazzamento fisico del QR code.
+        Lo status iniziale e' INACTIVE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuestRequest'
+      responses:
+        '201':
+          description: Quest creata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Collezionabile referenziato non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/quests/{id}:
+    get:
+      tags: [quest-admin]
+      summary: Dettaglio quest per admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettaglio quest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [quest-admin]
+      summary: Aggiorna una quest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuestRequest'
+      responses:
+        '200':
+          description: Quest aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [quest-admin]
+      summary: Archivia una quest (soft delete)
+      description: |
+        Lo status della quest viene impostato a ARCHIVED. La quest non
+        viene rimossa dal database per preservare l'integrita' dei
+        completamenti gia' fatti dai giocatori.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Quest archiviata
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/quests/{id}/activate:
+    post:
+      tags: [quest-admin]
+      summary: Attiva una quest
+      description: |
+        Imposta lo status della quest a ACTIVE. Per le quest principali
+        e' richiesto che exactPosition e qrToken siano gia' popolati
+        (cioe' che l'operatore abbia gia' piazzato fisicamente il QR).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Quest attivata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quest non ancora piazzata o stato non valido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/quests/{id}/deactivate:
+    post:
+      tags: [quest-admin]
+      summary: Disattiva una quest
+      description: |
+        Imposta lo status della quest a INACTIVE. La quest non sara'
+        piu' visibile ai giocatori ma resta nel sistema e puo' essere
+        riattivata.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Quest disattivata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
