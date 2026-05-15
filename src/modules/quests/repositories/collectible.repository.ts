@@ -39,3 +39,12 @@ export async function findCollectiblesByIds(ids: Types.ObjectId[]): Promise<ICol
   }
   return Collectible.find({ _id: { $in: ids } });
 }
+
+/**
+ * Restituisce tutti i collezionabili ordinati per data di creazione
+ * decrescente. Non e' paginato perche' in produzione si prevedono
+ * poche decine di collezionabili al massimo.
+ */
+export async function listAllCollectibles(): Promise<ICollectible[]> {
+  return Collectible.find().sort({ createdAt: -1 });
+}

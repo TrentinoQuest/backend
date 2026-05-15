@@ -25,6 +25,7 @@ import {
 } from '../src/database/models/Quest.model';
 import { Collectible, CollectibleRarity } from '../src/database/models/Collectible.model';
 import { randomBytes } from 'node:crypto';
+import { Admin, UserRole } from '../src/database/models/User.model';
 
 /**
  * Genera un token QR random per le quest principali di esempio.
@@ -94,7 +95,7 @@ async function seedSecondaryQuests(): Promise<void> {
       description:
         "Sali al Doss Trento, la collina simbolo della citta' che ospita il Mausoleo di Cesare Battisti e regala una vista panoramica unica.",
       basePoints: 50,
-      checkInRadiusMeters: 80,
+      checkInRadiusMeters: 15,
       position: {
         type: 'Point' as const,
         coordinates: [11.118, 46.068],
@@ -105,7 +106,7 @@ async function seedSecondaryQuests(): Promise<void> {
       description:
         'Raggiungi le sponde del Lago di Tovel, gioiello incastonato nel Parco Naturale Adamello-Brenta, famoso per le sue acque cristalline.',
       basePoints: 80,
-      checkInRadiusMeters: 100,
+      checkInRadiusMeters: 20,
       position: {
         type: 'Point' as const,
         coordinates: [10.9491, 46.2614],
@@ -116,7 +117,7 @@ async function seedSecondaryQuests(): Promise<void> {
       description:
         "Visita Castel Beseno, la piu' grande fortezza del Trentino arroccata sulla collina che domina la Vallagarina.",
       basePoints: 60,
-      checkInRadiusMeters: 70,
+      checkInRadiusMeters: 10,
       position: {
         type: 'Point' as const,
         coordinates: [11.0911, 45.8403],
@@ -162,12 +163,12 @@ async function seedPrimaryQuests(collectibleIds: {
       type: 'Point' as const,
       coordinates: [11.1247, 46.0696],
     },
-    searchRadiusMeters: 200,
+    searchRadiusMeters: 25,
     exactPosition: {
       type: 'Point' as const,
       coordinates: [11.125, 46.07],
     },
-    validationRadiusMeters: 30,
+    validationRadiusMeters: 5,
     qrToken: buonconsiglioToken,
     collectibleId: collectibleIds.buonconsiglioId,
   });
@@ -183,12 +184,12 @@ async function seedPrimaryQuests(collectibleIds: {
       type: 'Point' as const,
       coordinates: [10.8689, 45.9006],
     },
-    searchRadiusMeters: 150,
+    searchRadiusMeters: 25,
     exactPosition: {
       type: 'Point' as const,
       coordinates: [10.869, 45.9008],
     },
-    validationRadiusMeters: 25,
+    validationRadiusMeters: 5,
     qrToken: cascateToken,
     collectibleId: collectibleIds.cascateId,
   });
@@ -206,6 +207,35 @@ async function seedPrimaryQuests(collectibleIds: {
 }
 
 /**
+ * Inserisce un utente admin di default con credenziali note.
+ *
+ * Se l'utente esiste gia' (riconosciuto per email), non viene
+ * sovrascritto: questo permette di rieseguire il seed senza perdere
+ * l'admin esistente. La password viene hashata automaticamente dal
+ * middleware pre-save del modello User.
+ *
+ * Credenziali: admin@trentinoquest.local / AdminPass123
+ */
+async function seedAdminUser(): Promise<void> {
+  const email = 'admin@trentinoquest.local';
+  const existing = await Admin.findOne({ email });
+  if (existing) {
+    logger.info({ email }, "Admin gia' esistente, skip");
+    return;
+  }
+
+  await Admin.create({
+    email,
+    password: 'AdminPass123',
+    role: UserRole.ADMIN,
+    firstName: 'Admin',
+    lastName: 'Trentino',
+  });
+
+  logger.info({ email }, 'Admin creato (credenziali: admin@trentinoquest.local / AdminPass123)');
+}
+
+/**
  * Punto di ingresso dello script.
  */
 async function run(): Promise<void> {
@@ -218,6 +248,8 @@ async function run(): Promise<void> {
     if (shouldClean) {
       await cleanCollections();
     }
+
+    await seedAdminUser();
 
     const collectibleIds = await seedCollectibles();
     await seedSecondaryQuests();
