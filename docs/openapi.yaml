@@ -1,0 +1,1246 @@
+openapi: 3.0.3
+info:
+  title: Trentino Quest API
+  description: |
+    REST API di Trentino Quest, app gamificata per l'esplorazione del Trentino.
+
+    Questa specifica è il contratto pubblico esposto dal backend Node.js verso
+    i client (mobile-app Ionic/Angular e backoffice Angular) ed è organizzata
+    secondo le interfacce dei componenti definiti nel Deliverable D2.
+
+    Stile architetturale REST (Fielding 2000):
+    - Addressability: URI resource-oriented sotto /api/v1/
+    - Uniform Interface: verbi HTTP standard con semantica idempotente
+    - Connectedness: campi _links nelle response per hypermedia
+    - Statelessness: autenticazione JWT, nessuna sessione lato server
+
+    Mapping interfacce D2 -> tag OpenAPI:
+    - IAuth                -> auth
+    - IPlayerProfile       -> player-profile
+    - IQuestCompletion     -> quest-completion
+    - IQuestAdmin          -> quest-admin
+    - IOperatorOps         -> operator-ops
+    - IQrValidation        -> qr-validation
+    - IBusinessSelfMgt     -> business-self-mgt
+    - IBusinessAdmin       -> business-admin
+    - ISocial              -> social
+    - IAnalytics           -> analytics
+
+    Pattern di autenticazione: access token + refresh token.
+    L'access token (JWT, TTL 15 minuti) viene allegato a tutte le richieste
+    autenticate nell'header Authorization. Il refresh token (stringa opaque,
+    TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
+    token. La rotation dei refresh token e' attiva: ogni chiamata a
+    /auth/refresh emette un nuovo refresh token e revoca quello precedente.
+  version: 0.2.0
+  contact:
+    name: Gruppo 19 - Trentino Quest
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Sviluppo locale
+
+tags:
+  - name: auth
+    description: |
+      Interfaccia IAuth fornita da AuthService.
+      Login, registrazione, logout, recovery password, verifica del ruolo utente.
+  - name: player-profile
+    description: |
+      Interfaccia IPlayerProfile fornita da QuestService.
+      Profilo del giocatore, collezionabili, punti, QR code personale.
+  - name: quest-completion
+    description: |
+      Interfaccia IQuestCompletion fornita da QuestService.
+      Visualizzazione mappa, dettagli quest, scansione QR con validazione GPS,
+      check-in geolocalizzato per quest secondarie.
+  - name: quest-admin
+    description: |
+      Interfaccia IQuestAdmin fornita da QuestService.
+      Creazione, modifica, disattivazione delle quest. Generazione e gestione
+      dei QR code. Pianificazione del piazzamento delle quest principali.
+  - name: operator-ops
+    description: |
+      Interfaccia IOperatorOps fornita da QuestService.
+      Registrazione posizione GPS dei QR code piazzati, aggiornamento coordinate,
+      segnalazione QR code mancanti o danneggiati.
+  - name: qr-validation
+    description: |
+      Interfaccia IQrValidation fornita da QuestService.
+      Validazione del QR code personale del giocatore presso un'Attivita Locale
+      per l'applicazione di uno sconto.
+  - name: business-self-mgt
+    description: |
+      Interfaccia IBusinessSelfMgt fornita da BusinessService.
+      Registrazione dell'Attivita Locale, gestione del profilo aziendale,
+      CRUD delle proprie offerte.
+  - name: business-admin
+    description: |
+      Interfaccia IBusinessAdmin fornita da BusinessService.
+      Visualizzazione, approvazione e rifiuto delle richieste di affiliazione
+      delle Attivita Locali.
+  - name: social
+    description: |
+      Interfaccia ISocial fornita da SocialService.
+      Gestione amicizie, classifiche social, feed di attivita.
+  - name: analytics
+    description: |
+      Interfaccia IAnalytics fornita da AnalyticsService.
+      Dashboard analitica per amministratori: flussi turistici, zone visitate,
+      stagionalita, statistiche aggregate.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token JWT ottenuto via POST /auth/login. Inviato in ogni
+        richiesta protetta nell'header Authorization come "Bearer <token>".
+        Vita breve (15 minuti) per limitare il rischio in caso di intercettazione.
+        Il rinnovo avviene tramite POST /auth/refresh usando il refresh token.
+
+  schemas:
+    Links:
+      type: object
+      description: Hyperlinks ad altre risorse correlate (connectedness REST).
+      additionalProperties:
+        type: object
+        properties:
+          href:
+            type: string
+            format: uri
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: QUEST_ALREADY_COMPLETED
+        message:
+          type: string
+        details:
+          type: object
+
+    GeoPoint:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    PaginatedMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    UserRole:
+      type: string
+      enum: [player, admin, business, maintenance]
+      description: |
+        Ruolo dell'utente nel sistema. Mappa la gerarchia di Utente del D2:
+        - player: Giocatore
+        - admin: Amministratore
+        - business: Attivita Locale (riservato, attivato dal modulo business)
+        - maintenance: Operatore Manutenzione (riservato, attivato dal modulo quests)
+
+    User:
+      type: object
+      description: |
+        Rappresentazione di base di un utente. I campi specifici del ruolo
+        vengono aggiunti tramite gli schemi Player e Admin.
+      required: [id, email, role, createdAt]
+      properties:
+        id:
+          type: string
+          example: 65f9a1b2c3d4e5f6a7b8c9d0
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        createdAt:
+          type: string
+          format: date-time
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    Player:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [username, totalPoints, registrationDate]
+          properties:
+            username:
+              type: string
+              minLength: 3
+              maxLength: 30
+            totalPoints:
+              type: integer
+              minimum: 0
+            registrationDate:
+              type: string
+              format: date-time
+
+    Admin:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [firstName, lastName]
+          properties:
+            firstName:
+              type: string
+            lastName:
+              type: string
+
+    RegisterPlayerRequest:
+      type: object
+      required: [email, password, username]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          format: password
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      description: |
+        Risposta restituita da register e login. Contiene la coppia di token
+        access+refresh e l'utente autenticato.
+      required: [accessToken, refreshToken, accessExpiresIn, refreshExpiresIn, user]
+      properties:
+        accessToken:
+          type: string
+          description: JWT con TTL breve, da allegare alle richieste API
+        refreshToken:
+          type: string
+          description: Token opaque con TTL lungo, da usare per rinnovare l'access
+        accessExpiresIn:
+          type: string
+          example: 15m
+        refreshExpiresIn:
+          type: string
+          example: 30d
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/Player'
+            - $ref: '#/components/schemas/Admin'
+          discriminator:
+            propertyName: role
+            mapping:
+              player: '#/components/schemas/Player'
+              admin: '#/components/schemas/Admin'
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    RefreshTokenResponse:
+      type: object
+      description: |
+        Risposta dell'endpoint /auth/refresh. Contiene la nuova coppia di
+        token. Il refresh token precedente viene revocato (rotation) e non
+        e' piu' utilizzabile.
+      required: [accessToken, refreshToken, accessExpiresIn, refreshExpiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        accessExpiresIn:
+          type: string
+          example: 15m
+        refreshExpiresIn:
+          type: string
+          example: 30d
+
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    PasswordRecoveryRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    QuestType:
+      type: string
+      enum: [primary, secondary]
+      description: |
+        Tipo di quest:
+        - primary: con QR code nascosto, sblocca un collezionabile
+        - secondary: con check-in geolocalizzato, solo punti
+
+    QuestStatus:
+      type: string
+      enum: [active, inactive, archived]
+      description: Stato del ciclo di vita della quest.
+
+    CollectibleRarity:
+      type: string
+      enum: [common, uncommon, rare, legendary]
+
+    QuestBase:
+      type: object
+      description: Campi comuni a tutte le tipologie di quest.
+      required: [id, name, description, type, status, basePoints, createdAt]
+      properties:
+        id:
+          type: string
+          example: 65f9a1b2c3d4e5f6a7b8c9d0
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestType'
+        status:
+          $ref: '#/components/schemas/QuestStatus'
+        basePoints:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    PrimaryQuest:
+      allOf:
+        - $ref: '#/components/schemas/QuestBase'
+        - type: object
+          required: [type, searchArea, searchRadiusMeters, collectibleId]
+          properties:
+            type:
+              type: string
+              enum: [primary]
+            searchArea:
+              $ref: '#/components/schemas/GeoPoint'
+            searchRadiusMeters:
+              type: integer
+              minimum: 10
+              maximum: 10000
+            collectibleId:
+              type: string
+              nullable: true
+
+    SecondaryQuest:
+      allOf:
+        - $ref: '#/components/schemas/QuestBase'
+        - type: object
+          required: [type, position, checkInRadiusMeters]
+          properties:
+            type:
+              type: string
+              enum: [secondary]
+            position:
+              $ref: '#/components/schemas/GeoPoint'
+            checkInRadiusMeters:
+              type: integer
+              minimum: 5
+              maximum: 500
+
+    AnyQuest:
+      oneOf:
+        - $ref: '#/components/schemas/PrimaryQuest'
+        - $ref: '#/components/schemas/SecondaryQuest'
+      discriminator:
+        propertyName: type
+        mapping:
+          primary: '#/components/schemas/PrimaryQuest'
+          secondary: '#/components/schemas/SecondaryQuest'
+
+    Collectible:
+      type: object
+      required: [id, name, description, imageUrl, rarity, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+        rarity:
+          $ref: '#/components/schemas/CollectibleRarity'
+        createdAt:
+          type: string
+          format: date-time
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    CollectibleEntry:
+      type: object
+      required: [collectible, unlockedAt]
+      properties:
+        collectible:
+          $ref: '#/components/schemas/Collectible'
+        unlockedAt:
+          type: string
+          format: date-time
+
+    Completion:
+      type: object
+      required: [id, questId, pointsAwarded, position, completedAt]
+      properties:
+        id:
+          type: string
+        questId:
+          type: string
+        pointsAwarded:
+          type: integer
+          minimum: 0
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        completedAt:
+          type: string
+          format: date-time
+
+    CompletionEntry:
+      type: object
+      required: [completion, quest]
+      properties:
+        completion:
+          $ref: '#/components/schemas/Completion'
+        quest:
+          $ref: '#/components/schemas/AnyQuest'
+
+    ProgressSummary:
+      type: object
+      required: [totalQuests, completedQuests, percentage]
+      properties:
+        totalQuests:
+          type: integer
+        completedQuests:
+          type: integer
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+
+    CheckInRequest:
+      type: object
+      required: [position]
+      properties:
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+
+    CheckInResponse:
+      type: object
+      required: [completion, pointsAwarded, totalPoints, distanceFromTargetMeters]
+      properties:
+        completion:
+          $ref: '#/components/schemas/Completion'
+        pointsAwarded:
+          type: integer
+        totalPoints:
+          type: integer
+        distanceFromTargetMeters:
+          type: number
+
+    ScanQrRequest:
+      type: object
+      required: [qrToken, position]
+      properties:
+        qrToken:
+          type: string
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+
+    ScanQrResponse:
+      type: object
+      required: [completion, pointsAwarded, totalPoints, collectible, distanceFromTargetMeters]
+      properties:
+        completion:
+          $ref: '#/components/schemas/Completion'
+        pointsAwarded:
+          type: integer
+        totalPoints:
+          type: integer
+        collectible:
+          $ref: '#/components/schemas/Collectible'
+        distanceFromTargetMeters:
+          type: number
+
+    CreateSecondaryQuestRequest:
+      type: object
+      required: [type, name, description, basePoints, position, checkInRadiusMeters]
+      properties:
+        type:
+          type: string
+          enum: [secondary]
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        basePoints:
+          type: integer
+          minimum: 0
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        checkInRadiusMeters:
+          type: integer
+          minimum: 5
+          maximum: 500
+
+    CreatePrimaryQuestRequest:
+      type: object
+      required: [type, name, description, basePoints, searchArea, searchRadiusMeters]
+      properties:
+        type:
+          type: string
+          enum: [primary]
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        basePoints:
+          type: integer
+          minimum: 0
+        searchArea:
+          $ref: '#/components/schemas/GeoPoint'
+        searchRadiusMeters:
+          type: integer
+          minimum: 10
+          maximum: 10000
+        collectibleId:
+          type: string
+          nullable: true
+
+    CreateQuestRequest:
+      oneOf:
+        - $ref: '#/components/schemas/CreateSecondaryQuestRequest'
+        - $ref: '#/components/schemas/CreatePrimaryQuestRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          secondary: '#/components/schemas/CreateSecondaryQuestRequest'
+          primary: '#/components/schemas/CreatePrimaryQuestRequest'
+
+    UpdateQuestRequest:
+      type: object
+      description: |
+        Aggiornamento parziale di una quest. Almeno un campo deve essere
+        fornito. I campi specifici di un tipo (searchArea/searchRadiusMeters/
+        collectibleId per primary, position/checkInRadiusMeters per secondary)
+        possono essere applicati solo a quest del tipo corretto.
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        basePoints:
+          type: integer
+          minimum: 0
+        searchArea:
+          $ref: '#/components/schemas/GeoPoint'
+        searchRadiusMeters:
+          type: integer
+          minimum: 10
+          maximum: 10000
+        collectibleId:
+          type: string
+          nullable: true
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        checkInRadiusMeters:
+          type: integer
+          minimum: 5
+          maximum: 500
+
+    ListAdminQuestsResponse:
+      type: object
+      required: [data, total, limit, offset]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnyQuest'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+  responses:
+    Unauthorized:
+      description: Token JWT mancante o non valido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: L'utente non ha i permessi per questa operazione.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Risorsa non trovata.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Input non valido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Conflitto con lo stato corrente della risorsa.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Registra un nuovo Giocatore
+      description: |
+        Crea un nuovo account di tipo Giocatore.
+        L'endpoint NON richiede autenticazione preventiva.
+        In caso di successo restituisce la coppia access+refresh token pronta
+        per l'uso, cosi' che il client possa procedere senza una chiamata di
+        login separata.
+
+        La registrazione di Amministratori e Attivita Locali avviene tramite
+        flussi separati e non e' esposta da questo endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPlayerRequest'
+      responses:
+        '201':
+          description: Giocatore registrato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email o username gia' in uso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Autentica un utente esistente
+      description: |
+        Verifica le credenziali fornite e, in caso di successo, restituisce
+        una coppia access+refresh token. L'access token va inviato come
+        "Bearer <token>" nell'header Authorization delle richieste successive.
+        Il refresh token va conservato in storage persistente sul client e
+        usato solo verso /auth/refresh per rinnovare l'access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticazione riuscita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Credenziali non valide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rinnova la coppia di token
+      description: |
+        Riceve il refresh token corrente e, se valido, emette una nuova
+        coppia access+refresh token. Il refresh token vecchio viene revocato
+        (rotation): ogni refresh token e' utilizzabile una sola volta.
+
+        Risponde 401 se il refresh token e' assente, sconosciuto, scaduto
+        o gia' revocato. In tal caso il client deve scartare entrambi i
+        token e procedere con un nuovo login.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Nuova coppia di token emessa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Refresh token non valido, scaduto o revocato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Termina la sessione corrente
+      description: |
+        Revoca il refresh token specificato impedendone ulteriori utilizzi.
+        L'access token resta tecnicamente valido fino alla sua scadenza
+        naturale (15 minuti), ma senza refresh token attivo l'utente non
+        puo' rinnovarlo: la sessione termina di fatto entro la finestra
+        dell'access token corrente.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '204':
+          description: Logout completato
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/password-recovery:
+    post:
+      tags: [auth]
+      summary: Richiede il recupero della password
+      description: |
+        Genera un token monouso di recupero password e invia all'utente
+        un link via email per impostarne una nuova.
+
+        Per motivi di sicurezza la risposta è sempre 202, indipendentemente
+        dall'esistenza dell'email nel sistema, per non rivelare quali email
+        sono registrate.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRecoveryRequest'
+      responses:
+        '202':
+          description: |
+            Richiesta accettata. Se l'email è registrata, l'utente riceverà
+            un link di recupero.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /quests:
+    get:
+      tags: [quest-completion]
+      summary: Lista delle quest visibili
+      description: |
+        Restituisce l'elenco delle quest attive. Supporta filtri opzionali
+        per posizione (bounding box) e per tipo. Usato dal client mobile
+        per popolare la mappa.
+      parameters:
+        - name: lat
+          in: query
+          schema: { type: number }
+          description: Latitudine del centro per filtro geografico
+        - name: lng
+          in: query
+          schema: { type: number }
+          description: Longitudine del centro per filtro geografico
+        - name: radiusMeters
+          in: query
+          schema: { type: integer, minimum: 100, maximum: 50000 }
+          description: Raggio in metri dal centro per filtro geografico
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestType'
+          description: Filtra solo quest principali o solo secondarie
+      responses:
+        '200':
+          description: Lista delle quest
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /quests/{id}:
+    get:
+      tags: [quest-completion]
+      summary: Dettagli di una quest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettagli della quest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /quests/{id}/check-in:
+    post:
+      tags: [quest-completion]
+      summary: Completa una quest secondaria con check-in geolocalizzato
+      description: |
+        Verifica che il giocatore si trovi entro il raggio di check-in della
+        quest specificata e registra il completamento. Risponde con i punti
+        assegnati e la distanza GPS dal target.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '201':
+          description: Check-in completato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quest gia' completata o fuori raggio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /quests/{id}/scan:
+    post:
+      tags: [quest-completion]
+      summary: Completa una quest principale tramite scansione QR
+      description: |
+        Verifica il token del QR code scansionato e la posizione GPS del
+        giocatore. Se entrambi validi, registra il completamento, assegna
+        punti e sblocca il collezionabile associato.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanQrRequest'
+      responses:
+        '201':
+          description: Scansione completata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanQrResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quest gia' completata, token non valido o fuori raggio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /player/me:
+    get:
+      tags: [player-profile]
+      summary: Profilo del giocatore autenticato
+      responses:
+        '200':
+          description: Profilo del giocatore
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/completions:
+    get:
+      tags: [player-profile]
+      summary: Feed dei completamenti del giocatore
+      description: |
+        Restituisce i completamenti effettuati dal giocatore in ordine
+        cronologico decrescente, con i dati della quest associata.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Lista dei completamenti
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompletionEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/collection:
+    get:
+      tags: [player-profile]
+      summary: Album dei collezionabili del giocatore
+      responses:
+        '200':
+          description: Lista dei collezionabili sbloccati
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CollectibleEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/progress:
+    get:
+      tags: [player-profile]
+      summary: Progressi del giocatore
+      description: |
+        Restituisce un riepilogo dei progressi del giocatore sull'intero
+        territorio o su una zona specifica.
+      parameters:
+        - name: zone
+          in: query
+          schema: { type: string }
+          description: Identificativo zona (se omesso, restituisce il totale regione)
+      responses:
+        '200':
+          description: Riepilogo progressi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/quests:
+    get:
+      tags: [quest-admin]
+      summary: Lista paginata delle quest (admin)
+      description: |
+        Restituisce l'elenco completo delle quest indipendentemente dallo
+        status (active, inactive, archived). Supporta filtri per tipo e
+        status e paginazione offset/limit.
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestType'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestStatus'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Lista paginata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAdminQuestsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [quest-admin]
+      summary: Crea una nuova quest
+      description: |
+        Crea una quest secondaria o principale in base al campo type del
+        payload. Le quest principali create non hanno ancora exactPosition,
+        qrToken e validationRadiusMeters: questi vengono popolati
+        dall'operatore al momento del piazzamento fisico del QR code.
+        Lo status iniziale e' INACTIVE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuestRequest'
+      responses:
+        '201':
+          description: Quest creata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Collezionabile referenziato non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/quests/{id}:
+    get:
+      tags: [quest-admin]
+      summary: Dettaglio quest per admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettaglio quest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [quest-admin]
+      summary: Aggiorna una quest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuestRequest'
+      responses:
+        '200':
+          description: Quest aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [quest-admin]
+      summary: Archivia una quest (soft delete)
+      description: |
+        Lo status della quest viene impostato a ARCHIVED. La quest non
+        viene rimossa dal database per preservare l'integrita' dei
+        completamenti gia' fatti dai giocatori.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Quest archiviata
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/quests/{id}/activate:
+    post:
+      tags: [quest-admin]
+      summary: Attiva una quest
+      description: |
+        Imposta lo status della quest a ACTIVE. Per le quest principali
+        e' richiesto che exactPosition e qrToken siano gia' popolati
+        (cioe' che l'operatore abbia gia' piazzato fisicamente il QR).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Quest attivata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quest non ancora piazzata o stato non valido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/quests/{id}/deactivate:
+    post:
+      tags: [quest-admin]
+      summary: Disattiva una quest
+      description: |
+        Imposta lo status della quest a INACTIVE. La quest non sara'
+        piu' visibile ai giocatori ma resta nel sistema e puo' essere
+        riattivata.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Quest disattivata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnyQuest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/collectibles:
+    get:
+      tags: [quest-admin]
+      summary: Lista tutti i collezionabili (admin)
+      description: |
+        Restituisce la lista completa dei collezionabili nel sistema.
+        Usato principalmente per popolare il dropdown nella schermata
+        di creazione/modifica di una quest principale.
+      responses:
+        '200':
+          description: Lista collezionabili
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Collectible'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
