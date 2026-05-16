@@ -3,6 +3,9 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { logger } from './logger';
 
+//Definizione path del file swagger.yaml
+export const apiSpecPath = join(process.cwd(), 'swagger.yaml');
+
 /**
  * Carica e parse il file OpenAPI YAML dal filesystem.
  *
@@ -11,15 +14,13 @@ import { logger } from './logger';
  * server per essere riflesse in Swagger UI.
  */
 export function loadOpenApiSpec(): Record<string, unknown> {
-  const specPath = join(process.cwd(), 'docs', 'openapi.yaml');
-
   try {
-    const fileContent = readFileSync(specPath, 'utf8');
+    const fileContent = readFileSync(apiSpecPath, 'utf8');
     const spec = parse(fileContent) as Record<string, unknown>;
-    logger.info(`OpenAPI spec caricata da ${specPath}`);
+    logger.info(`OpenAPI spec caricata da ${apiSpecPath}`);
     return spec;
   } catch (err) {
-    logger.error({ err, specPath }, 'Impossibile caricare OpenAPI spec');
+    logger.error({ err, apiSpecPath }, 'Impossibile caricare OpenAPI spec');
     throw err;
   }
 }

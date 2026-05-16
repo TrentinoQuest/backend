@@ -1,6 +1,6 @@
-import { join } from 'node:path';
 import { middleware as openApiValidator } from 'express-openapi-validator';
 import type { RequestHandler } from 'express';
+import { apiSpecPath } from '../config/openapi';
 
 /**
  * Crea il middleware di validazione automatica delle richieste HTTP
@@ -21,8 +21,6 @@ import type { RequestHandler } from 'express';
  * express-openapi-validator.
  */
 export function createOpenApiValidator(): RequestHandler[] {
-  const apiSpecPath = join(process.cwd(), 'docs', 'openapi.yaml');
-
   return openApiValidator({
     apiSpec: apiSpecPath,
     validateRequests: true,
