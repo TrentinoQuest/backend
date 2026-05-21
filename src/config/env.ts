@@ -13,6 +13,9 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
   DB_RETRY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+
+  GEO_MAX_ACCURACY_METERS: z.coerce.number().positive().max(10000).default(100),
+  GEO_MAX_FIX_AGE_SECONDS: z.coerce.number().positive().max(3600).default(60),
 });
 
 const parsed = envSchema.safeParse(process.env);
