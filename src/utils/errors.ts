@@ -47,3 +47,11 @@ export class ConflictError extends AppError {
     super(409, code, message);
   }
 }
+
+export type GeoFixRejectionCode = 'OUT_OF_RANGE_ACCURACY' | 'STALE_FIX';
+
+export class GeoFixRejectedError extends AppError {
+  constructor(message: string, code: GeoFixRejectionCode, details?: unknown) {
+    super(422, code, message, details);
+  }
+}

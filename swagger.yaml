@@ -138,7 +138,35 @@ components:
           format: double
           minimum: -180
           maximum: 180
-
+    
+    GeoFix:
+      description: |
+        Misurazione GPS con metadati di qualita'. Estende GeoPoint con
+        accuracy e clientTimestamp, necessari alla validazione anti-cheat
+        lato server nei payload di check-in (UC-30) e scansione QR (UC-22).
+      allOf:
+        - $ref: '#/components/schemas/GeoPoint'
+        - type: object
+          required: [accuracy, clientTimestamp]
+          properties:
+            accuracy:
+              type: number
+              format: double
+              minimum: 0
+              exclusiveMinimum: true
+              maximum: 100000
+              description: |
+                Raggio di incertezza orizzontale in metri (1 sigma, 68% di
+                confidenza). Valori tipici: 5-20m outdoor, 50-200m indoor.
+            clientTimestamp:
+              type: integer
+              format: int64
+              minimum: 1
+              description: |
+                Timestamp di acquisizione del fix sul client, in millisecondi
+                dall'epoch Unix (compatibile con Date.now()). Il backend lo
+                confronta con il proprio orologio per rifiutare fix obsoleti.
+    
     PaginatedMeta:
       type: object
       properties:
@@ -465,6 +493,25 @@ components:
       properties:
         position:
           $ref: '#/components/schemas/GeoPoint'
+        fix:
+          description: |
+            Metadati di qualita' del fix GPS, opzionali per retrocompatibilita'.
+            Se presenti, il server applica la validazione anti-cheat (rifiuto
+            di fix imprecisi o vecchi). I client moderni dovrebbero sempre
+            inviarli.
+          type: object
+          required: [accuracy, clientTimestamp]
+          properties:
+            accuracy:
+              type: number
+              format: double
+              minimum: 0
+              exclusiveMinimum: true
+              maximum: 100000
+            clientTimestamp:
+              type: integer
+              format: int64
+              minimum: 1
 
     CheckInResponse:
       type: object
@@ -487,6 +534,26 @@ components:
           type: string
         position:
           $ref: '#/components/schemas/GeoPoint'
+        fix:
+          description: |
+            Metadati di qualita' del fix GPS, opzionali per retrocompatibilita'.
+            Se presenti, il server applica la validazione anti-cheat (rifiuto
+            di fix imprecisi o vecchi). Particolarmente rilevante per scansione
+            QR: previene completamenti a distanza via condivisione del token
+            (vedi UC-22.4 del Deliverable D1).
+          type: object
+          required: [accuracy, clientTimestamp]
+          properties:
+            accuracy:
+              type: number
+              format: double
+              minimum: 0
+              exclusiveMinimum: true
+              maximum: 100000
+            clientTimestamp:
+              type: integer
+              format: int64
+              minimum: 1
 
     ScanQrResponse:
       type: object
@@ -648,7 +715,15 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-
+    
+    UnprocessableEntity:
+      description: |
+        Il payload e' sintatticamente valido ma rifiutato dalle regole
+        di business (es. metadati GPS oltre soglia di accettazione).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 security:
   - bearerAuth: []
 
@@ -903,6 +978,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '422':
+          description: |
+            Fix GPS rifiutato dalla validazione anti-cheat (richiede `fix` nel body).
+            Codici `code` possibili:
+              - `OUT_OF_RANGE_ACCURACY`: accuracy oltre la soglia configurata
+              - `STALE_FIX`: fix troppo vecchio rispetto alla soglia configurata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /quests/{id}/scan:
     post:
@@ -938,6 +1023,16 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: Quest gia' completata, token non valido o fuori raggio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: |
+            Fix GPS rifiutato dalla validazione anti-cheat (richiede `fix` nel body).
+            Codici `code` possibili:
+              - `OUT_OF_RANGE_ACCURACY`: accuracy oltre la soglia configurata
+              - `STALE_FIX`: fix troppo vecchio rispetto alla soglia configurata
           content:
             application/json:
               schema:
