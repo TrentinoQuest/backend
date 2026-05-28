@@ -22,10 +22,11 @@ import {
   SecondaryQuest,
   QuestStatus,
   QuestType,
+  PlacementStatus,
 } from '../src/database/models/Quest.model';
 import { Collectible, CollectibleRarity } from '../src/database/models/Collectible.model';
 import { randomBytes } from 'node:crypto';
-import { Admin, UserRole } from '../src/database/models/User.model';
+import { Admin, UserRole, Maintenance } from '../src/database/models/User.model';
 
 /**
  * Genera un token QR random per le quest principali di esempio.
@@ -171,6 +172,7 @@ async function seedPrimaryQuests(collectibleIds: {
     validationRadiusMeters: 5,
     qrToken: buonconsiglioToken,
     collectibleId: collectibleIds.buonconsiglioId,
+    placementStatus: PlacementStatus.PLACED,
   });
 
   await PrimaryQuest.create({
@@ -192,6 +194,7 @@ async function seedPrimaryQuests(collectibleIds: {
     validationRadiusMeters: 5,
     qrToken: cascateToken,
     collectibleId: collectibleIds.cascateId,
+    placementStatus: PlacementStatus.PLACED,
   });
 
   logger.info({ primaryQuestCount: 2 }, 'Quest principali inserite');
@@ -236,6 +239,33 @@ async function seedAdminUser(): Promise<void> {
 }
 
 /**
+ * Inserisce un operatore manutenzione di default con credenziali note.
+ * Idempotente: se esiste gia', non viene ricreato.
+ *
+ * Credenziali: operator@trentinoquest.local / OperatorPass123
+ */
+async function seedOperatorUser(): Promise<void> {
+  const email = 'operator@trentinoquest.local';
+  const existing = await Maintenance.findOne({ email });
+  if (existing) {
+    logger.info({ email }, "Operatore gia' esistente, skip");
+    return;
+  }
+
+  await Maintenance.create({
+    email,
+    password: 'OperatorPass123',
+    firstName: 'Operatore',
+    lastName: 'Manutenzione',
+  });
+
+  logger.info(
+    { email },
+    'Operatore creato (credenziali: operator@trentinoquest.local / OperatorPass123)',
+  );
+}
+
+/**
  * Punto di ingresso dello script.
  */
 async function run(): Promise<void> {
@@ -250,6 +280,7 @@ async function run(): Promise<void> {
     }
 
     await seedAdminUser();
+    await seedOperatorUser();
 
     const collectibleIds = await seedCollectibles();
     await seedSecondaryQuests();

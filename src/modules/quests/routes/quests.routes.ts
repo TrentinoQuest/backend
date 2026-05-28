@@ -22,6 +22,13 @@ import {
   activateAdminQuestHandler,
   deactivateAdminQuestHandler,
 } from '../controllers/quest-admin.controller';
+import {
+  listOperatorQuestsHandler,
+  getOperatorQuestHandler,
+  placeQuestHandler,
+  updatePositionHandler,
+  reportIssueHandler,
+} from '../controllers/operator.controller';
 import { listAdminCollectiblesHandler } from '../controllers/collectible-admin.controller';
 
 /**
@@ -108,6 +115,38 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.ADMIN),
     listAdminCollectiblesHandler,
+  );
+
+  // IOperatorOps - tutte riservate all'operatore manutenzione
+  router.get(
+    '/operator/quests',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    listOperatorQuestsHandler,
+  );
+  router.get(
+    '/operator/quests/:id',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    getOperatorQuestHandler,
+  );
+  router.post(
+    '/operator/quests/:id/place',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    placeQuestHandler,
+  );
+  router.patch(
+    '/operator/quests/:id/position',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    updatePositionHandler,
+  );
+  router.post(
+    '/operator/quests/:id/report-issue',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    reportIssueHandler,
   );
 
   return router;
