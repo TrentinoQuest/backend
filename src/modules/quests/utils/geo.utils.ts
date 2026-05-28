@@ -1,4 +1,7 @@
+import { GeoFix } from '@trentino-quest/shared-types';
 import { GeoJsonPoint } from '../../../database/models/Quest.model';
+import { env } from '../../../config/env';
+import { GeoFixRejectedError } from '../../../utils/errors';
 
 /**
  * Coordinate geografiche in formato {lat, lng}, allineato all'interfaccia
@@ -44,6 +47,7 @@ export function haversineDistanceMeters(a: GeoPoint, b: GeoPoint): number {
     Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDeltaLngHalf * sinDeltaLngHalf;
 
   const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+
   return EARTH_RADIUS_METERS * c;
 }
 
@@ -73,4 +77,62 @@ export function geoJsonToGeoPoint(geoJson: GeoJsonPoint): GeoPoint {
     lng: geoJson.coordinates[0],
     lat: geoJson.coordinates[1],
   };
+}
+
+/**
+ * Metadati di qualita' di un fix GPS validati dalla funzione anti-cheat.
+ *
+ * Sottoinsieme di GeoFix di shared-types che esclude lat/lng: la
+ * validazione anti-cheat non li usa, quindi non li accettiamo nella
+ * firma (interface segregation). Quando un endpoint riceve un GeoFix
+ * completo, passa solo i campi rilevanti tramite destrutturazione.
+ */
+export type GeoFixQualityMetadata = Pick<GeoFix, 'accuracy' | 'clientTimestamp'>;
+
+/**
+ * Valida i metadati di qualita' di un fix GPS contro le soglie anti-cheat
+ * configurate via env.
+ *
+ * Da invocare nei controller di check-in e scansione QR quando il client
+ * ha inviato il campo opzionale `fix`. Se il fix supera le soglie, lancia
+ * GeoFixRejectedError, che il middleware di error handling globale mappa
+ * automaticamente a HTTP 422 con il codice applicativo appropriato.
+ *
+ * Il confronto e' strict (>): un fix con accuracy o eta' esattamente pari
+ * alla soglia configurata e' accettato. Questo riflette l'interpretazione
+ * naturale di "soglia massima" come limite incluso.
+ *
+ * Cause di rifiuto:
+ *  - OUT_OF_RANGE_ACCURACY: accuracy > GEO_MAX_ACCURACY_METERS
+ *  - STALE_FIX: eta' del fix > GEO_MAX_FIX_AGE_SECONDS
+ *
+ * Allineato con UC-22.4 (validazione GPS alla scansione QR) e UC-30
+ * (check-in geolocalizzato) del Deliverable D1.
+ */
+export function validateGeoFix(fix: GeoFixQualityMetadata): void {
+  // Rifiuto per accuracy insufficiente.
+  if (fix.accuracy > env.GEO_MAX_ACCURACY_METERS) {
+    throw new GeoFixRejectedError(
+      `GPS troppo impreciso: accuracy ${fix.accuracy}m, soglia ${env.GEO_MAX_ACCURACY_METERS}m`,
+      'OUT_OF_RANGE_ACCURACY',
+      {
+        actualAccuracy: fix.accuracy,
+        maxAllowedAccuracy: env.GEO_MAX_ACCURACY_METERS,
+      },
+    );
+  }
+
+  // Rifiuto per fix obsoleto.
+  // Conversione a secondi una volta sola per consistenza con env e messaggi.
+  const fixAgeSeconds = (Date.now() - fix.clientTimestamp) / 1000;
+  if (fixAgeSeconds > env.GEO_MAX_FIX_AGE_SECONDS) {
+    throw new GeoFixRejectedError(
+      `Fix GPS troppo vecchio: ${Math.round(fixAgeSeconds)}s, soglia ${env.GEO_MAX_FIX_AGE_SECONDS}s`,
+      'STALE_FIX',
+      {
+        fixAgeSeconds: Math.round(fixAgeSeconds),
+        maxAllowedAgeSeconds: env.GEO_MAX_FIX_AGE_SECONDS,
+      },
+    );
+  }
 }
