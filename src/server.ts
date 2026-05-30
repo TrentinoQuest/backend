@@ -9,6 +9,7 @@ import { createSwaggerRouter } from './middleware/swagger';
 import { createOpenApiValidator } from './middleware/openapi-validator';
 import { createAuthRouter } from './modules/auth/routes/auth.routes';
 import { createQuestsRouter } from './modules/quests/routes/quests.routes';
+import { createBusinessRouter } from './modules/business/routes/business.routes';
 import { startRefreshTokenCleanupJob } from './jobs/refresh-token-cleanup.job';
 import {
   connectWithRetry,
@@ -58,6 +59,9 @@ app.use('/api/v1/auth', createAuthRouter());
 
 // Le route del modulo quests sono tutte sotto /api/v1/quests, incluse quelle
 app.use('/api/v1', createQuestsRouter());
+
+// Le route del modulo business sono tutte sotto /api/v1/business, incluse quelle
+app.use('/api/v1', createBusinessRouter());
 
 // L'error handler globale deve essere registrato come ultimo middleware,
 // dopo tutte le route, per intercettare gli errori propagati da next(err).

@@ -26,7 +26,9 @@ import {
 } from '../src/database/models/Quest.model';
 import { Collectible, CollectibleRarity } from '../src/database/models/Collectible.model';
 import { randomBytes } from 'node:crypto';
-import { Admin, UserRole, Maintenance } from '../src/database/models/User.model';
+import { Admin, UserRole, Maintenance, Business } from '../src/database/models/User.model';
+import { Offer } from '../src/database/models/Offer.model';
+import { BusinessType, BusinessApprovalStatus } from '@trentino-quest/shared-types';
 
 /**
  * Genera un token QR random per le quest principali di esempio.
@@ -47,6 +49,7 @@ async function cleanCollections(): Promise<void> {
   logger.info('Pulizia delle collection quests e collectibles in corso');
   await Quest.deleteMany({});
   await Collectible.deleteMany({});
+  await Offer.deleteMany({});
   logger.info('Pulizia completata');
 }
 
@@ -266,6 +269,51 @@ async function seedOperatorUser(): Promise<void> {
 }
 
 /**
+ * Inserisce un'attivita locale approvata con due offerte di esempio.
+ * Idempotente sull'attivita (riconosciuta per email).
+ *
+ * Credenziali: rifugio@trentinoquest.local / BusinessPass123
+ */
+async function seedBusinessWithOffers(): Promise<void> {
+  const email = 'rifugio@trentinoquest.local';
+  let business = await Business.findOne({ email });
+
+  if (!business) {
+    business = await Business.create({
+      email,
+      password: 'BusinessPass123',
+      businessName: 'Rifugio Tre Cime',
+      businessType: BusinessType.MOUNTAIN_HUT,
+      address: 'Localita Tre Cime, 38010 Trentino',
+      position: { type: 'Point', coordinates: [11.45, 46.62] },
+      approvalStatus: BusinessApprovalStatus.APPROVED,
+    });
+    logger.info(
+      { email },
+      'Attivita creata (credenziali: rifugio@trentinoquest.local / BusinessPass123)',
+    );
+  } else {
+    logger.info({ email }, "Attivita gia' esistente, skip creazione");
+  }
+
+  // Le offerte vengono ricreate a ogni seed (sono state pulite da cleanCollections).
+  await Offer.create({
+    businessId: business._id,
+    title: 'Sconto 20% sul pranzo',
+    description: 'Sconto del 20% su tutti i piatti del menu del giorno.',
+    pointsCost: 300,
+  });
+  await Offer.create({
+    businessId: business._id,
+    title: 'Borraccia omaggio',
+    description: 'Una borraccia termica brandizzata Trentino Quest in regalo.',
+    pointsCost: 500,
+  });
+
+  logger.info({ offerCount: 2 }, 'Offerte di esempio inserite');
+}
+
+/**
  * Punto di ingresso dello script.
  */
 async function run(): Promise<void> {
@@ -281,6 +329,8 @@ async function run(): Promise<void> {
 
     await seedAdminUser();
     await seedOperatorUser();
+    await seedOperatorUser();
+    await seedBusinessWithOffers();
 
     const collectibleIds = await seedCollectibles();
     await seedSecondaryQuests();

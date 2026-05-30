@@ -31,7 +31,7 @@ info:
     TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
     token. La rotation dei refresh token e' attiva: ogni chiamata a
     /auth/refresh emette un nuovo refresh token e revoca quello precedente.
-  version: 0.4.0
+  version: 0.5.0
   contact:
     name: Gruppo 19 - Trentino Quest
 servers:
@@ -793,6 +793,164 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OperatorQuestView'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    BusinessApprovalStatus:
+      type: string
+      enum: [pending, approved, rejected]
+    BusinessType:
+      type: string
+      enum: [restaurant, museum, farm_stay, mountain_hut, other]
+    OfferStatus:
+      type: string
+      enum: [active, archived]
+    Business:
+      type: object
+      required:
+        [id, email, role, businessName, businessType, address, position, approvalStatus, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [business]
+        businessName:
+          type: string
+        businessType:
+          $ref: '#/components/schemas/BusinessType'
+        address:
+          type: string
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+        approvalStatus:
+          $ref: '#/components/schemas/BusinessApprovalStatus'
+        createdAt:
+          type: string
+          format: date-time
+    Offer:
+      type: object
+      required: [id, businessId, title, description, pointsCost, status, createdAt]
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        pointsCost:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/OfferStatus'
+        createdAt:
+          type: string
+          format: date-time
+    OfferWithBusiness:
+      allOf:
+        - $ref: '#/components/schemas/Offer'
+        - type: object
+          required: [businessName, businessType, businessAddress, businessPosition]
+          properties:
+            businessName:
+              type: string
+            businessType:
+              $ref: '#/components/schemas/BusinessType'
+            businessAddress:
+              type: string
+            businessPosition:
+              $ref: '#/components/schemas/GeoPoint'
+    RegisterBusinessRequest:
+      type: object
+      required: [email, password, businessName, businessType, address, position]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          format: password
+        businessName:
+          type: string
+          minLength: 2
+          maxLength: 120
+        businessType:
+          $ref: '#/components/schemas/BusinessType'
+        address:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+    UpdateBusinessProfileRequest:
+      type: object
+      minProperties: 1
+      properties:
+        businessName:
+          type: string
+          minLength: 2
+          maxLength: 120
+        businessType:
+          $ref: '#/components/schemas/BusinessType'
+        address:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          $ref: '#/components/schemas/GeoPoint'
+    CreateOfferRequest:
+      type: object
+      required: [title, description, pointsCost]
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+        pointsCost:
+          type: integer
+          minimum: 1
+    UpdateOfferRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+        pointsCost:
+          type: integer
+          minimum: 1
+    RejectBusinessRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    ListBusinessesResponse:
+      type: object
+      required: [data, total, limit, offset]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Business'
         total:
           type: integer
         limit:
@@ -1697,3 +1855,273 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /business/register:
+    post:
+      tags: [business-self-mgt]
+      summary: Registra una nuova Attivita Locale
+      description: |
+        Crea un account business in stato pending e restituisce subito la
+        coppia di token. L'attivita puo' autenticarsi ma non puo' pubblicare
+        offerte finche' l'admin non approva l'affiliazione (RF28).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterBusinessRequest'
+      responses:
+        '201':
+          description: Attivita registrata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email gia' in uso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /business/me:
+    get:
+      tags: [business-self-mgt]
+      summary: Profilo dell'attivita autenticata
+      responses:
+        '200':
+          description: Profilo attivita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      tags: [business-self-mgt]
+      summary: Aggiorna il profilo aziendale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBusinessProfileRequest'
+      responses:
+        '200':
+          description: Profilo aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /business/offers:
+    get:
+      tags: [business-self-mgt]
+      summary: Lista le offerte dell'attivita autenticata
+      responses:
+        '200':
+          description: Lista offerte
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Offer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [business-self-mgt]
+      summary: Crea una nuova offerta
+      description: |
+        Disponibile solo per attivita approvate (RF29). Un'attivita pending
+        o rejected riceve 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+      responses:
+        '201':
+          description: Offerta creata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Affiliazione non approvata o ruolo non valido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /business/offers/{id}:
+    patch:
+      tags: [business-self-mgt]
+      summary: Aggiorna una propria offerta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOfferRequest'
+      responses:
+        '200':
+          description: Offerta aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Offerta di altra attivita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [business-self-mgt]
+      summary: Archivia una propria offerta (soft delete)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Offerta archiviata
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Offerta di altra attivita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /admin/businesses:
+    get:
+      tags: [business-admin]
+      summary: Lista le affiliazioni (admin)
+      description: Lista paginata delle attivita, filtrabile per stato (RF38).
+      parameters:
+        - name: approvalStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/BusinessApprovalStatus'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Lista paginata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListBusinessesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/businesses/{id}/approve:
+    post:
+      tags: [business-admin]
+      summary: Approva l'affiliazione di un'attivita
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Attivita approvata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Attivita gia approvata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/businesses/{id}/reject:
+    post:
+      tags: [business-admin]
+      summary: Rifiuta l'affiliazione di un'attivita
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectBusinessRequest'
+      responses:
+        '200':
+          description: Attivita rifiutata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /offers:
+    get:
+      tags: [business-self-mgt]
+      summary: Lista le offerte pubbliche (lato giocatore)
+      description: |
+        Restituisce le offerte attive delle sole attivita approvate,
+        arricchite con i dati dell'attivita. Visibile a tutti gli utenti
+        autenticati.
+      responses:
+        '200':
+          description: Lista offerte pubbliche
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OfferWithBusiness'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
