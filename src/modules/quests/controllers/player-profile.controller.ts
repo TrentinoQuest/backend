@@ -96,6 +96,7 @@ function serializeCollectible(collectible: ICollectible): CollectibleEntry['coll
     imageUrl: collectible.imageUrl,
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
+    status: collectible.status,
   };
 }
 

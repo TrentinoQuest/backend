@@ -31,7 +31,7 @@ info:
     TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
     token. La rotation dei refresh token e' attiva: ogni chiamata a
     /auth/refresh emette un nuovo refresh token e revoca quello precedente.
-  version: 0.3.0
+  version: 0.4.0
   contact:
     name: Gruppo 19 - Trentino Quest
 servers:
@@ -331,6 +331,47 @@ components:
     CollectibleRarity:
       type: string
       enum: [common, uncommon, rare, legendary]
+    CollectibleStatus:
+      type: string
+      enum: [active, archived]
+      description: |
+        Stato del ciclo di vita del collezionabile. Un collezionabile
+        archiviato non e' assegnabile a nuove quest ma resta negli album
+        dei giocatori che lo hanno gia' sbloccato.
+    CreateCollectibleRequest:
+      type: object
+      required: [name, description, imageUrl, rarity]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+        imageUrl:
+          type: string
+          format: uri
+        rarity:
+          $ref: '#/components/schemas/CollectibleRarity'
+    UpdateCollectibleRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+        imageUrl:
+          type: string
+          format: uri
+        rarity:
+          $ref: '#/components/schemas/CollectibleRarity'
     QuestBase:
       type: object
       description: Campi comuni a tutte le tipologie di quest.
@@ -414,6 +455,8 @@ components:
           format: uri
         rarity:
           $ref: '#/components/schemas/CollectibleRarity'
+        status:
+          $ref: '#/components/schemas/CollectibleStatus'
         createdAt:
           type: string
           format: date-time
@@ -692,9 +735,20 @@ components:
         placementStatus:
           $ref: '#/components/schemas/PlacementStatus'
         exactPosition:
-          allOf:
-            - $ref: '#/components/schemas/GeoPoint'
+          type: object
           nullable: true
+          required: [lat, lng]
+          properties:
+            lat:
+              type: number
+              format: double
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              format: double
+              minimum: -180
+              maximum: 180
     PlaceQuestRequest:
       type: object
       required: [exactPosition]
@@ -1361,11 +1415,11 @@ paths:
   /admin/collectibles:
     get:
       tags: [quest-admin]
-      summary: Lista tutti i collezionabili (admin)
+      summary: Lista collezionabili attivi (admin)
       description: |
-        Restituisce la lista completa dei collezionabili nel sistema.
-        Usato principalmente per popolare il dropdown nella schermata
-        di creazione/modifica di una quest principale.
+        Restituisce la lista dei collezionabili attivi. Usato dal
+        backoffice per popolare il dropdown nella creazione/modifica di
+        una quest principale. I collezionabili archiviati sono esclusi.
       responses:
         '200':
           description: Lista collezionabili
@@ -1379,6 +1433,99 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [quest-admin]
+      summary: Crea un nuovo collezionabile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCollectibleRequest'
+      responses:
+        '201':
+          description: Collezionabile creato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collectible'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/collectibles/{id}:
+    get:
+      tags: [quest-admin]
+      summary: Dettaglio collezionabile (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettaglio collezionabile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collectible'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [quest-admin]
+      summary: Aggiorna un collezionabile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCollectibleRequest'
+      responses:
+        '200':
+          description: Collezionabile aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collectible'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [quest-admin]
+      summary: Archivia un collezionabile (soft delete)
+      description: |
+        Il collezionabile viene archiviato (status archived), non rimosso,
+        per preservare gli album dei giocatori che lo possiedono.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Collezionabile archiviato
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /operator/quests:
     get:
       tags: [operator-ops]

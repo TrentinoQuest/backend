@@ -89,6 +89,7 @@ function serializeCollectible(collectible: ICollectible): ScanQrResponse['collec
     imageUrl: collectible.imageUrl,
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
+    status: collectible.status,
   };
 }
 

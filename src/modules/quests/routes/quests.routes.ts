@@ -29,7 +29,13 @@ import {
   updatePositionHandler,
   reportIssueHandler,
 } from '../controllers/operator.controller';
-import { listAdminCollectiblesHandler } from '../controllers/collectible-admin.controller';
+import {
+  listAdminCollectiblesHandler,
+  getAdminCollectibleHandler,
+  createCollectibleHandler,
+  updateCollectibleHandler,
+  archiveCollectibleHandler,
+} from '../controllers/collectible-admin.controller';
 
 /**
  * Crea il router con gli endpoint del modulo quests.
@@ -115,6 +121,30 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.ADMIN),
     listAdminCollectiblesHandler,
+  );
+  router.get(
+    '/admin/collectibles/:id',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    getAdminCollectibleHandler,
+  );
+  router.post(
+    '/admin/collectibles',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    createCollectibleHandler,
+  );
+  router.patch(
+    '/admin/collectibles/:id',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    updateCollectibleHandler,
+  );
+  router.delete(
+    '/admin/collectibles/:id',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    archiveCollectibleHandler,
   );
 
   // IOperatorOps - tutte riservate all'operatore manutenzione
