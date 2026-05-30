@@ -1,6 +1,11 @@
 import { Types } from 'mongoose';
 import { NotFoundError, ConflictError, BadRequestError } from '../../../utils/errors';
-import { IQuest, QuestStatus, QuestType } from '../../../database/models/Quest.model';
+import {
+  IQuest,
+  QuestStatus,
+  QuestType,
+  PlacementStatus,
+} from '../../../database/models/Quest.model';
 import { QuestType as ApiQuestType } from '@trentino-quest/shared-types';
 import {
   createPrimaryQuest,
@@ -205,11 +210,19 @@ export async function activateQuest(id: string): Promise<IQuest> {
     throw new NotFoundError('Quest non trovata', 'QUEST_NOT_FOUND');
   }
 
-  if (isPrimaryQuest(quest) && (!quest.exactPosition || !quest.qrToken)) {
-    throw new ConflictError(
-      "La quest principale non puo' essere attivata finche' non viene piazzata dall'operatore",
-      'QUEST_NOT_PLACED',
-    );
+  if (isPrimaryQuest(quest)) {
+    if (!quest.exactPosition || !quest.qrToken) {
+      throw new ConflictError(
+        "La quest principale non puo' essere attivata finche' non viene piazzata dall'operatore",
+        'QUEST_NOT_PLACED',
+      );
+    }
+    if (quest.placementStatus === PlacementStatus.REPORTED) {
+      throw new ConflictError(
+        'La quest ha un QR segnalato come danneggiato: ripristinare il QR prima di riattivare',
+        'QUEST_QR_REPORTED',
+      );
+    }
   }
 
   const updated = await setQuestStatus(id, QuestStatus.ACTIVE);

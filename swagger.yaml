@@ -3,9 +3,8 @@ info:
   title: Trentino Quest API
   description: |
     REST API di Trentino Quest, app gamificata per l'esplorazione del Trentino.
-
-    Questa specifica è il contratto pubblico esposto dal backend Node.js verso
-    i client (mobile-app Ionic/Angular e backoffice Angular) ed è organizzata
+    Questa specifica e' il contratto pubblico esposto dal backend Node.js verso
+    i client (mobile-app Ionic/Angular e backoffice Angular) ed e' organizzata
     secondo le interfacce dei componenti definiti nel Deliverable D2.
 
     Stile architetturale REST (Fielding 2000):
@@ -32,14 +31,12 @@ info:
     TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
     token. La rotation dei refresh token e' attiva: ogni chiamata a
     /auth/refresh emette un nuovo refresh token e revoca quello precedente.
-  version: 0.2.0
+  version: 0.3.0
   contact:
     name: Gruppo 19 - Trentino Quest
-
 servers:
   - url: http://localhost:3000/api/v1
     description: Sviluppo locale
-
 tags:
   - name: auth
     description: |
@@ -88,7 +85,6 @@ tags:
       Interfaccia IAnalytics fornita da AnalyticsService.
       Dashboard analitica per amministratori: flussi turistici, zone visitate,
       stagionalita, statistiche aggregate.
-
 components:
   securitySchemes:
     bearerAuth:
@@ -100,7 +96,6 @@ components:
         richiesta protetta nell'header Authorization come "Bearer <token>".
         Vita breve (15 minuti) per limitare il rischio in caso di intercettazione.
         Il rinnovo avviene tramite POST /auth/refresh usando il refresh token.
-
   schemas:
     Links:
       type: object
@@ -111,7 +106,6 @@ components:
           href:
             type: string
             format: uri
-
     Error:
       type: object
       required: [code, message]
@@ -123,7 +117,6 @@ components:
           type: string
         details:
           type: object
-
     GeoPoint:
       type: object
       required: [lat, lng]
@@ -138,7 +131,6 @@ components:
           format: double
           minimum: -180
           maximum: 180
-    
     GeoFix:
       description: |
         Misurazione GPS con metadati di qualita'. Estende GeoPoint con
@@ -166,14 +158,12 @@ components:
                 Timestamp di acquisizione del fix sul client, in millisecondi
                 dall'epoch Unix (compatibile con Date.now()). Il backend lo
                 confronta con il proprio orologio per rifiutare fix obsoleti.
-    
     PaginatedMeta:
       type: object
       properties:
         total: { type: integer }
         limit: { type: integer }
         offset: { type: integer }
-
     UserRole:
       type: string
       enum: [player, admin, business, maintenance]
@@ -183,7 +173,6 @@ components:
         - admin: Amministratore
         - business: Attivita Locale (riservato, attivato dal modulo business)
         - maintenance: Operatore Manutenzione (riservato, attivato dal modulo quests)
-
     User:
       type: object
       description: |
@@ -204,7 +193,6 @@ components:
           format: date-time
         _links:
           $ref: '#/components/schemas/Links'
-
     Player:
       allOf:
         - $ref: '#/components/schemas/User'
@@ -221,7 +209,6 @@ components:
             registrationDate:
               type: string
               format: date-time
-
     Admin:
       allOf:
         - $ref: '#/components/schemas/User'
@@ -232,7 +219,6 @@ components:
               type: string
             lastName:
               type: string
-
     RegisterPlayerRequest:
       type: object
       required: [email, password, username]
@@ -248,7 +234,6 @@ components:
           type: string
           minLength: 3
           maxLength: 30
-
     LoginRequest:
       type: object
       required: [email, password]
@@ -259,7 +244,6 @@ components:
         password:
           type: string
           format: password
-
     AuthResponse:
       type: object
       description: |
@@ -288,14 +272,12 @@ components:
             mapping:
               player: '#/components/schemas/Player'
               admin: '#/components/schemas/Admin'
-
     RefreshTokenRequest:
       type: object
       required: [refreshToken]
       properties:
         refreshToken:
           type: string
-
     RefreshTokenResponse:
       type: object
       description: |
@@ -314,14 +296,12 @@ components:
         refreshExpiresIn:
           type: string
           example: 30d
-
     LogoutRequest:
       type: object
       required: [refreshToken]
       properties:
         refreshToken:
           type: string
-
     PasswordRecoveryRequest:
       type: object
       required: [email]
@@ -329,7 +309,6 @@ components:
         email:
           type: string
           format: email
-
     QuestType:
       type: string
       enum: [primary, secondary]
@@ -337,16 +316,21 @@ components:
         Tipo di quest:
         - primary: con QR code nascosto, sblocca un collezionabile
         - secondary: con check-in geolocalizzato, solo punti
-
     QuestStatus:
       type: string
       enum: [active, inactive, archived]
       description: Stato del ciclo di vita della quest.
-
+    PlacementStatus:
+      type: string
+      enum: [pending, placed, reported]
+      description: |
+        Stato di piazzamento fisico del QR code di una quest principale:
+        - pending: creata ma QR non ancora piazzato
+        - placed: QR piazzato, posizione registrata
+        - reported: QR segnalato come mancante o danneggiato
     CollectibleRarity:
       type: string
       enum: [common, uncommon, rare, legendary]
-
     QuestBase:
       type: object
       description: Campi comuni a tutte le tipologie di quest.
@@ -371,12 +355,11 @@ components:
           format: date-time
         _links:
           $ref: '#/components/schemas/Links'
-
     PrimaryQuest:
       allOf:
         - $ref: '#/components/schemas/QuestBase'
         - type: object
-          required: [type, searchArea, searchRadiusMeters, collectibleId]
+          required: [type, searchArea, searchRadiusMeters, collectibleId, placementStatus]
           properties:
             type:
               type: string
@@ -390,7 +373,8 @@ components:
             collectibleId:
               type: string
               nullable: true
-
+            placementStatus:
+              $ref: '#/components/schemas/PlacementStatus'
     SecondaryQuest:
       allOf:
         - $ref: '#/components/schemas/QuestBase'
@@ -406,7 +390,6 @@ components:
               type: integer
               minimum: 5
               maximum: 500
-
     AnyQuest:
       oneOf:
         - $ref: '#/components/schemas/PrimaryQuest'
@@ -416,7 +399,6 @@ components:
         mapping:
           primary: '#/components/schemas/PrimaryQuest'
           secondary: '#/components/schemas/SecondaryQuest'
-
     Collectible:
       type: object
       required: [id, name, description, imageUrl, rarity, createdAt]
@@ -437,7 +419,6 @@ components:
           format: date-time
         _links:
           $ref: '#/components/schemas/Links'
-
     CollectibleEntry:
       type: object
       required: [collectible, unlockedAt]
@@ -447,7 +428,6 @@ components:
         unlockedAt:
           type: string
           format: date-time
-
     Completion:
       type: object
       required: [id, questId, pointsAwarded, position, completedAt]
@@ -464,7 +444,6 @@ components:
         completedAt:
           type: string
           format: date-time
-
     CompletionEntry:
       type: object
       required: [completion, quest]
@@ -473,7 +452,6 @@ components:
           $ref: '#/components/schemas/Completion'
         quest:
           $ref: '#/components/schemas/AnyQuest'
-
     ProgressSummary:
       type: object
       required: [totalQuests, completedQuests, percentage]
@@ -486,7 +464,6 @@ components:
           type: number
           minimum: 0
           maximum: 100
-
     CheckInRequest:
       type: object
       required: [position]
@@ -512,7 +489,6 @@ components:
               type: integer
               format: int64
               minimum: 1
-
     CheckInResponse:
       type: object
       required: [completion, pointsAwarded, totalPoints, distanceFromTargetMeters]
@@ -525,7 +501,6 @@ components:
           type: integer
         distanceFromTargetMeters:
           type: number
-
     ScanQrRequest:
       type: object
       required: [qrToken, position]
@@ -554,7 +529,6 @@ components:
               type: integer
               format: int64
               minimum: 1
-
     ScanQrResponse:
       type: object
       required: [completion, pointsAwarded, totalPoints, collectible, distanceFromTargetMeters]
@@ -569,7 +543,6 @@ components:
           $ref: '#/components/schemas/Collectible'
         distanceFromTargetMeters:
           type: number
-
     CreateSecondaryQuestRequest:
       type: object
       required: [type, name, description, basePoints, position, checkInRadiusMeters]
@@ -594,7 +567,6 @@ components:
           type: integer
           minimum: 5
           maximum: 500
-
     CreatePrimaryQuestRequest:
       type: object
       required: [type, name, description, basePoints, searchArea, searchRadiusMeters]
@@ -622,7 +594,6 @@ components:
         collectibleId:
           type: string
           nullable: true
-
     CreateQuestRequest:
       oneOf:
         - $ref: '#/components/schemas/CreateSecondaryQuestRequest'
@@ -632,7 +603,6 @@ components:
         mapping:
           secondary: '#/components/schemas/CreateSecondaryQuestRequest'
           primary: '#/components/schemas/CreatePrimaryQuestRequest'
-
     UpdateQuestRequest:
       type: object
       description: |
@@ -668,7 +638,6 @@ components:
           type: integer
           minimum: 5
           maximum: 500
-
     ListAdminQuestsResponse:
       type: object
       required: [data, total, limit, offset]
@@ -683,7 +652,99 @@ components:
           type: integer
         offset:
           type: integer
-
+    OperatorQuestView:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - status
+        - basePoints
+        - createdAt
+        - type
+        - searchArea
+        - searchRadiusMeters
+        - placementStatus
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/QuestStatus'
+        basePoints:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [primary]
+        searchArea:
+          $ref: '#/components/schemas/GeoPoint'
+        searchRadiusMeters:
+          type: integer
+        collectibleId:
+          type: string
+          nullable: true
+        placementStatus:
+          $ref: '#/components/schemas/PlacementStatus'
+        exactPosition:
+          allOf:
+            - $ref: '#/components/schemas/GeoPoint'
+          nullable: true
+    PlaceQuestRequest:
+      type: object
+      required: [exactPosition]
+      properties:
+        exactPosition:
+          $ref: '#/components/schemas/GeoPoint'
+        fix:
+          type: object
+          required: [accuracy, clientTimestamp]
+          properties:
+            accuracy:
+              type: number
+              description: Accuratezza del rilevamento GPS in metri
+            clientTimestamp:
+              type: integer
+              description: Timestamp epoch del rilevamento in millisecondi
+    UpdateQuestPositionRequest:
+      type: object
+      required: [exactPosition]
+      properties:
+        exactPosition:
+          $ref: '#/components/schemas/GeoPoint'
+        fix:
+          type: object
+          required: [accuracy, clientTimestamp]
+          properties:
+            accuracy:
+              type: number
+            clientTimestamp:
+              type: integer
+    ReportQuestIssueRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+    ListOperatorQuestsResponse:
+      type: object
+      required: [data, total, limit, offset]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperatorQuestView'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
   responses:
     Unauthorized:
       description: Token JWT mancante o non valido.
@@ -715,7 +776,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    
     UnprocessableEntity:
       description: |
         Il payload e' sintatticamente valido ma rifiutato dalle regole
@@ -726,7 +786,6 @@ components:
             $ref: '#/components/schemas/Error'
 security:
   - bearerAuth: []
-
 paths:
   /auth/register:
     post:
@@ -738,7 +797,6 @@ paths:
         In caso di successo restituisce la coppia access+refresh token pronta
         per l'uso, cosi' che il client possa procedere senza una chiamata di
         login separata.
-
         La registrazione di Amministratori e Attivita Locali avviene tramite
         flussi separati e non e' esposta da questo endpoint.
       security: []
@@ -763,7 +821,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /auth/login:
     post:
       tags: [auth]
@@ -796,7 +853,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /auth/refresh:
     post:
       tags: [auth]
@@ -805,7 +861,6 @@ paths:
         Riceve il refresh token corrente e, se valido, emette una nuova
         coppia access+refresh token. Il refresh token vecchio viene revocato
         (rotation): ogni refresh token e' utilizzabile una sola volta.
-
         Risponde 401 se il refresh token e' assente, sconosciuto, scaduto
         o gia' revocato. In tal caso il client deve scartare entrambi i
         token e procedere con un nuovo login.
@@ -831,7 +886,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /auth/logout:
     post:
       tags: [auth]
@@ -854,7 +908,6 @@ paths:
           description: Logout completato
         '400':
           $ref: '#/components/responses/BadRequest'
-
   /auth/password-recovery:
     post:
       tags: [auth]
@@ -862,8 +915,7 @@ paths:
       description: |
         Genera un token monouso di recupero password e invia all'utente
         un link via email per impostarne una nuova.
-
-        Per motivi di sicurezza la risposta è sempre 202, indipendentemente
+        Per motivi di sicurezza la risposta e' sempre 202, indipendentemente
         dall'esistenza dell'email nel sistema, per non rivelare quali email
         sono registrate.
       security: []
@@ -876,11 +928,10 @@ paths:
       responses:
         '202':
           description: |
-            Richiesta accettata. Se l'email è registrata, l'utente riceverà
+            Richiesta accettata. Se l'email e' registrata, l'utente ricevera'
             un link di recupero.
         '400':
           $ref: '#/components/responses/BadRequest'
-
   /quests:
     get:
       tags: [quest-completion]
@@ -918,7 +969,6 @@ paths:
                   $ref: '#/components/schemas/AnyQuest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
   /quests/{id}:
     get:
       tags: [quest-completion]
@@ -939,7 +989,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-
   /quests/{id}/check-in:
     post:
       tags: [quest-completion]
@@ -980,15 +1029,14 @@ paths:
                 $ref: '#/components/schemas/Error'
         '422':
           description: |
-            Fix GPS rifiutato dalla validazione anti-cheat (richiede `fix` nel body).
-            Codici `code` possibili:
-              - `OUT_OF_RANGE_ACCURACY`: accuracy oltre la soglia configurata
-              - `STALE_FIX`: fix troppo vecchio rispetto alla soglia configurata
+            Fix GPS rifiutato dalla validazione anti-cheat (richiede fix nel body).
+            Codici code possibili:
+              - OUT_OF_RANGE_ACCURACY: accuracy oltre la soglia configurata
+              - STALE_FIX: fix troppo vecchio rispetto alla soglia configurata
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /quests/{id}/scan:
     post:
       tags: [quest-completion]
@@ -1029,15 +1077,14 @@ paths:
                 $ref: '#/components/schemas/Error'
         '422':
           description: |
-            Fix GPS rifiutato dalla validazione anti-cheat (richiede `fix` nel body).
-            Codici `code` possibili:
-              - `OUT_OF_RANGE_ACCURACY`: accuracy oltre la soglia configurata
-              - `STALE_FIX`: fix troppo vecchio rispetto alla soglia configurata
+            Fix GPS rifiutato dalla validazione anti-cheat (richiede fix nel body).
+            Codici code possibili:
+              - OUT_OF_RANGE_ACCURACY: accuracy oltre la soglia configurata
+              - STALE_FIX: fix troppo vecchio rispetto alla soglia configurata
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /player/me:
     get:
       tags: [player-profile]
@@ -1051,7 +1098,6 @@ paths:
                 $ref: '#/components/schemas/Player'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
   /player/completions:
     get:
       tags: [player-profile]
@@ -1077,7 +1123,6 @@ paths:
                   $ref: '#/components/schemas/CompletionEntry'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
   /player/collection:
     get:
       tags: [player-profile]
@@ -1093,7 +1138,6 @@ paths:
                   $ref: '#/components/schemas/CollectibleEntry'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
   /player/progress:
     get:
       tags: [player-profile]
@@ -1115,7 +1159,6 @@ paths:
                 $ref: '#/components/schemas/ProgressSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
   /admin/quests:
     get:
       tags: [quest-admin]
@@ -1184,7 +1227,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /admin/quests/{id}:
     get:
       tags: [quest-admin]
@@ -1257,7 +1299,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-
   /admin/quests/{id}/activate:
     post:
       tags: [quest-admin]
@@ -1265,7 +1306,8 @@ paths:
       description: |
         Imposta lo status della quest a ACTIVE. Per le quest principali
         e' richiesto che exactPosition e qrToken siano gia' popolati
-        (cioe' che l'operatore abbia gia' piazzato fisicamente il QR).
+        (cioe' che l'operatore abbia gia' piazzato fisicamente il QR) e
+        che il QR non sia in stato reported.
       parameters:
         - name: id
           in: path
@@ -1285,12 +1327,11 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Quest non ancora piazzata o stato non valido
+          description: Quest non ancora piazzata, QR segnalato o stato non valido
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /admin/quests/{id}/deactivate:
     post:
       tags: [quest-admin]
@@ -1317,7 +1358,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-
   /admin/collectibles:
     get:
       tags: [quest-admin]
@@ -1339,3 +1379,174 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /operator/quests:
+    get:
+      tags: [operator-ops]
+      summary: Lista quest principali per l'operatore
+      description: |
+        Lista paginata delle quest principali filtrabile per stato di
+        piazzamento. Usata dall'operatore per organizzare il lavoro:
+        quest da piazzare (pending), gia' piazzate (placed), segnalate
+        come danneggiate (reported). RF42/43/45 del D1.
+      parameters:
+        - name: placementStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/PlacementStatus'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Lista paginata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListOperatorQuestsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /operator/quests/{id}:
+    get:
+      tags: [operator-ops]
+      summary: Dettaglio quest principale per l'operatore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettaglio quest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorQuestView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /operator/quests/{id}/place:
+    post:
+      tags: [operator-ops]
+      summary: Piazza fisicamente il QR code
+      description: |
+        L'operatore registra la posizione GPS esatta del QR appena
+        piazzato. Il backend genera il qrToken e imposta placementStatus
+        a placed. RF40 del D1. Se viene fornito il fix GPS, viene
+        validato (anti-cheat) e puo' rispondere 422.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceQuestRequest'
+      responses:
+        '200':
+          description: QR piazzato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorQuestView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: QR gia' piazzato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Fix GPS rifiutato (accuracy o eta' fuori soglia)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /operator/quests/{id}/position:
+    patch:
+      tags: [operator-ops]
+      summary: Aggiorna la posizione di un QR gia' piazzato
+      description: RF41 del D1. Richiede che la quest sia gia' in stato placed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuestPositionRequest'
+      responses:
+        '200':
+          description: Posizione aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorQuestView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: QR non piazzato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Fix GPS rifiutato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /operator/quests/{id}/report-issue:
+    post:
+      tags: [operator-ops]
+      summary: Segnala un QR mancante o danneggiato
+      description: |
+        RF44 del D1. Porta placementStatus a reported e disattiva la
+        quest (status inactive) cosi' che non sia completabile finche'
+        il QR non viene ripristinato.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportQuestIssueRequest'
+      responses:
+        '200':
+          description: Segnalazione registrata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorQuestView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

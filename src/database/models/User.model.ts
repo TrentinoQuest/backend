@@ -43,6 +43,16 @@ export interface IAdmin extends IUser {
 }
 
 /**
+ * Estensione di IUser per il ruolo Operatore Manutenzione.
+ * Aggiunge nome e cognome come l'amministratore. L'operatore si occupa
+ * del piazzamento fisico dei QR code sul territorio (RF40-45 del D1).
+ */
+export interface IMaintenance extends IUser {
+  firstName: string;
+  lastName: string;
+}
+
+/**
  * Schema base per l'utente.
  * Contiene i campi condivisi da tutti i ruoli e il middleware di hashing
  * della password che si applica automaticamente a qualsiasi sottotipo.
@@ -165,3 +175,30 @@ export const Player: Model<IPlayer> = User.discriminator<IPlayer>(UserRole.PLAYE
  * dovranno rispettare lo schema esteso (campi base + campi dell'admin).
  */
 export const Admin: Model<IAdmin> = User.discriminator<IAdmin>(UserRole.ADMIN, adminSchema);
+
+/**
+ * Schema specifico per il ruolo Operatore Manutenzione.
+ * Eredita tutti i campi di User e aggiunge nome e cognome.
+ */
+const maintenanceSchema = new Schema<IMaintenance>({
+  firstName: {
+    type: String,
+    required: [true, 'Nome obbligatorio'],
+    trim: true,
+  },
+  lastName: {
+    type: String,
+    required: [true, 'Cognome obbligatorio'],
+    trim: true,
+  },
+});
+
+/**
+ * Discriminator per il ruolo Operatore Manutenzione.
+ * I documenti creati tramite Maintenance.create() avranno
+ * role='maintenance' e dovranno rispettare lo schema esteso.
+ */
+export const Maintenance: Model<IMaintenance> = User.discriminator<IMaintenance>(
+  UserRole.MAINTENANCE,
+  maintenanceSchema,
+);
