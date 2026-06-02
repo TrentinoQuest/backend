@@ -22,7 +22,20 @@ import {
   activateAdminQuestHandler,
   deactivateAdminQuestHandler,
 } from '../controllers/quest-admin.controller';
-import { listAdminCollectiblesHandler } from '../controllers/collectible-admin.controller';
+import {
+  listOperatorQuestsHandler,
+  getOperatorQuestHandler,
+  placeQuestHandler,
+  updatePositionHandler,
+  reportIssueHandler,
+} from '../controllers/operator.controller';
+import {
+  listAdminCollectiblesHandler,
+  getAdminCollectibleHandler,
+  createCollectibleHandler,
+  updateCollectibleHandler,
+  archiveCollectibleHandler,
+} from '../controllers/collectible-admin.controller';
 
 /**
  * Crea il router con gli endpoint del modulo quests.
@@ -108,6 +121,62 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.ADMIN),
     listAdminCollectiblesHandler,
+  );
+  router.get(
+    '/admin/collectibles/:id',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    getAdminCollectibleHandler,
+  );
+  router.post(
+    '/admin/collectibles',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    createCollectibleHandler,
+  );
+  router.patch(
+    '/admin/collectibles/:id',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    updateCollectibleHandler,
+  );
+  router.delete(
+    '/admin/collectibles/:id',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    archiveCollectibleHandler,
+  );
+
+  // IOperatorOps - tutte riservate all'operatore manutenzione
+  router.get(
+    '/operator/quests',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    listOperatorQuestsHandler,
+  );
+  router.get(
+    '/operator/quests/:id',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    getOperatorQuestHandler,
+  );
+  router.post(
+    '/operator/quests/:id/place',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    placeQuestHandler,
+  );
+  router.patch(
+    '/operator/quests/:id/position',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    updatePositionHandler,
+  );
+  router.post(
+    '/operator/quests/:id/report-issue',
+    authenticate,
+    requireRole(UserRole.MAINTENANCE),
+    reportIssueHandler,
   );
 
   return router;

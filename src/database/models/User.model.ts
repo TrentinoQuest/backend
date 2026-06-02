@@ -2,6 +2,8 @@ import { Schema, model, Document, Model } from 'mongoose';
 import bcrypt from 'bcrypt';
 import { UserRole } from '@trentino-quest/shared-types';
 export { UserRole };
+import { BusinessApprovalStatus, BusinessType } from '@trentino-quest/shared-types';
+export { BusinessApprovalStatus, BusinessType };
 
 /**
  * Numero di round del salt per bcrypt.
@@ -40,6 +42,28 @@ export interface IPlayer extends IUser {
 export interface IAdmin extends IUser {
   firstName: string;
   lastName: string;
+}
+
+/**
+ * Estensione di IUser per il ruolo Operatore Manutenzione.
+ * Aggiunge nome e cognome come l'amministratore. L'operatore si occupa
+ * del piazzamento fisico dei QR code sul territorio (RF40-45 del D1).
+ */
+export interface IMaintenance extends IUser {
+  firstName: string;
+  lastName: string;
+}
+
+/**
+ * Estensione di IUser per il ruolo Attivita Locale.
+ * Aggiunge i dati aziendali e lo stato di approvazione dell'affiliazione.
+ */
+export interface IBusiness extends IUser {
+  businessName: string;
+  businessType: BusinessType;
+  address: string;
+  position: { type: 'Point'; coordinates: [number, number] };
+  approvalStatus: BusinessApprovalStatus;
 }
 
 /**
@@ -165,3 +189,87 @@ export const Player: Model<IPlayer> = User.discriminator<IPlayer>(UserRole.PLAYE
  * dovranno rispettare lo schema esteso (campi base + campi dell'admin).
  */
 export const Admin: Model<IAdmin> = User.discriminator<IAdmin>(UserRole.ADMIN, adminSchema);
+
+/**
+ * Schema specifico per il ruolo Operatore Manutenzione.
+ * Eredita tutti i campi di User e aggiunge nome e cognome.
+ */
+const maintenanceSchema = new Schema<IMaintenance>({
+  firstName: {
+    type: String,
+    required: [true, 'Nome obbligatorio'],
+    trim: true,
+  },
+  lastName: {
+    type: String,
+    required: [true, 'Cognome obbligatorio'],
+    trim: true,
+  },
+});
+
+/**
+ * Discriminator per il ruolo Operatore Manutenzione.
+ * I documenti creati tramite Maintenance.create() avranno
+ * role='maintenance' e dovranno rispettare lo schema esteso.
+ */
+export const Maintenance: Model<IMaintenance> = User.discriminator<IMaintenance>(
+  UserRole.MAINTENANCE,
+  maintenanceSchema,
+);
+
+/**
+ * Schema specifico per il ruolo Attivita Locale.
+ * La posizione e' un GeoJSON Point per consentire query geografiche
+ * (es. offerte vicine al giocatore in sviluppi futuri).
+ */
+const businessSchema = new Schema<IBusiness>({
+  businessName: {
+    type: String,
+    required: [true, 'Nome attivita obbligatorio'],
+    trim: true,
+    minlength: [2, 'Il nome attivita deve contenere almeno 2 caratteri'],
+    maxlength: [120, "Il nome attivita non puo' superare 120 caratteri"],
+  },
+  businessType: {
+    type: String,
+    enum: Object.values(BusinessType),
+    required: true,
+  },
+  address: {
+    type: String,
+    required: [true, 'Indirizzo obbligatorio'],
+    trim: true,
+    maxlength: [200, "L'indirizzo non puo' superare 200 caratteri"],
+  },
+  position: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      required: true,
+      default: 'Point',
+    },
+    coordinates: {
+      type: [Number],
+      required: true,
+      validate: {
+        validator: (v: number[]): boolean => v.length === 2,
+        message: 'Le coordinate devono essere [longitude, latitude]',
+      },
+    },
+  },
+  approvalStatus: {
+    type: String,
+    enum: Object.values(BusinessApprovalStatus),
+    default: BusinessApprovalStatus.PENDING,
+  },
+});
+
+businessSchema.index({ position: '2dsphere' });
+
+/**
+ * Discriminator per il ruolo Attivita Locale.
+ */
+export const Business: Model<IBusiness> = User.discriminator<IBusiness>(
+  UserRole.BUSINESS,
+  businessSchema,
+);

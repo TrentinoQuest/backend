@@ -59,6 +59,7 @@ function serializeQuest(quest: IQuest): AnyQuest {
       },
       searchRadiusMeters: primary.searchRadiusMeters,
       collectibleId: primary.collectibleId ? String(primary.collectibleId) : null,
+      placementStatus: primary.placementStatus,
     };
   }
 
@@ -95,6 +96,7 @@ function serializeCollectible(collectible: ICollectible): CollectibleEntry['coll
     imageUrl: collectible.imageUrl,
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
+    status: collectible.status,
   };
 }
 

@@ -141,7 +141,7 @@ function computeRefreshTokenExpiry(): Date {
  * userAgent e' opzionale e viene memorizzato passivamente per future
  * funzionalita' di device management.
  */
-async function issueTokenPair(user: IUser, userAgent?: string | null): Promise<TokenPair> {
+export async function issueTokenPair(user: IUser, userAgent?: string | null): Promise<TokenPair> {
   const accessToken = generateAccessToken(user);
   const refreshTokenValue = generateRefreshTokenValue();
   const refreshTokenHash = hashRefreshToken(refreshTokenValue);

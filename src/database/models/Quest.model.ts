@@ -1,4 +1,5 @@
 import { Schema, model, Document, Model, Types } from 'mongoose';
+import { PlacementStatus } from '@trentino-quest/shared-types';
 
 /**
  * Tipi di quest supportati.
@@ -100,6 +101,7 @@ export interface IPrimaryQuest extends IQuest {
   validationRadiusMeters: number;
   qrToken: string | null;
   collectibleId: Types.ObjectId | null;
+  placementStatus: PlacementStatus;
 }
 
 /**
@@ -200,6 +202,11 @@ const primaryQuestSchema = new Schema<IPrimaryQuest>({
     ref: 'Collectible',
     default: null,
   },
+  placementStatus: {
+    type: String,
+    enum: Object.values(PlacementStatus),
+    default: PlacementStatus.PENDING,
+  },
 });
 
 primaryQuestSchema.index({ searchArea: '2dsphere' });
@@ -249,3 +256,4 @@ export const SecondaryQuest: Model<ISecondaryQuest> = Quest.discriminator<ISecon
  * momento del completamento).
  */
 export { geoJsonPointSchema };
+export { PlacementStatus };

@@ -46,6 +46,7 @@ function serializeQuest(quest: IQuest): AnyQuest {
       },
       searchRadiusMeters: primary.searchRadiusMeters,
       collectibleId: primary.collectibleId ? String(primary.collectibleId) : null,
+      placementStatus: primary.placementStatus,
     };
   }
 
@@ -88,6 +89,7 @@ function serializeCollectible(collectible: ICollectible): ScanQrResponse['collec
     imageUrl: collectible.imageUrl,
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
+    status: collectible.status,
   };
 }
 
@@ -144,6 +146,10 @@ export async function getQuestByIdHandler(
  * Completa una quest secondaria con check-in geolocalizzato. Richiede
  * autenticazione: l'utente attivo viene letto da req.user popolato dal
  * middleware authenticate.
+ *
+ * Se il body include il campo opzionale `fix` (shared-types v0.5.0+),
+ * il service applica la validazione anti-cheat sulla qualita' del
+ * fix GPS prima di procedere col completamento.
  */
 export async function checkInHandler(
   req: Request,
@@ -157,7 +163,7 @@ export async function checkInHandler(
     const params = objectIdParamSchema.parse(req.params);
     const body = checkInSchema.parse(req.body);
 
-    const result = await checkIn(req.user, params.id, body.position);
+    const result = await checkIn(req.user, params.id, body.position, body.fix);
 
     const response: CheckInResponse = {
       completion: serializeCompletion(result.completion),
@@ -176,6 +182,10 @@ export async function checkInHandler(
  *
  * Completa una quest principale tramite scansione del QR code. Richiede
  * autenticazione.
+ *
+ * Se il body include il campo opzionale `fix` (shared-types v0.5.0+),
+ * il service applica la validazione anti-cheat sulla qualita' del
+ * fix GPS prima di procedere col completamento.
  */
 export async function scanQrHandler(
   req: Request,
@@ -189,7 +199,7 @@ export async function scanQrHandler(
     const params = objectIdParamSchema.parse(req.params);
     const body = scanQrSchema.parse(req.body);
 
-    const result = await scanQr(req.user, params.id, body.qrToken, body.position);
+    const result = await scanQr(req.user, params.id, body.qrToken, body.position, body.fix);
 
     const response: ScanQrResponse = {
       completion: serializeCompletion(result.completion),

@@ -16,10 +16,12 @@ import { findCollectibleById } from '../repositories/collectible.repository';
 import { createCompletion, hasPlayerCompletedQuest } from '../repositories/completion.repository';
 import { findUserById } from '../../auth/repositories/user.repository';
 import {
+  GeoFixQualityMetadata,
   GeoPoint,
   geoJsonToGeoPoint,
   geoPointToGeoJson,
   haversineDistanceMeters,
+  validateGeoFix,
 } from '../utils/geo.utils';
 
 /**
@@ -89,9 +91,15 @@ export async function getQuestById(id: string): Promise<IQuest> {
  * Completa una quest secondaria con check-in geolocalizzato.
  *
  * Sequenza di validazione:
+ * 0. (Se fix presente) Il fix GPS supera le soglie anti-cheat
  * 1. La quest esiste ed e' di tipo secondario
  * 2. Il giocatore non l'ha gia' completata
  * 3. La posizione GPS rientra nel raggio di check-in
+ *
+ * Lo step 0 e' eseguito fail-fast prima di qualsiasi I/O: se il client
+ * invia un fix inaccettabile non ha senso colpire il database. Se il
+ * client non invia il fix (retrocompatibilita' pre-v0.5.0) lo step 0
+ * viene saltato.
  *
  * In caso di successo registra il completamento, aggiorna il totale punti
  * del giocatore e ritorna i dati per la response.
@@ -100,7 +108,12 @@ export async function checkIn(
   player: IUser,
   questId: string,
   playerPosition: GeoPoint,
+  fix?: GeoFixQualityMetadata,
 ): Promise<CheckInResult> {
+  if (fix) {
+    validateGeoFix(fix);
+  }
+
   const quest = await getQuestById(questId);
   if (!isSecondaryQuest(quest)) {
     throw new ConflictError('Questo endpoint accetta solo quest secondarie', 'QUEST_TYPE_MISMATCH');
@@ -138,6 +151,7 @@ export async function checkIn(
       questId: String(quest._id),
       pointsAwarded,
       distance: Math.round(distance),
+      hasFix: fix !== undefined,
     },
     'Quest secondaria completata',
   );
@@ -154,12 +168,15 @@ export async function checkIn(
  * Completa una quest principale tramite scansione del QR code.
  *
  * Sequenza di validazione:
+ * 0. (Se fix presente) Il fix GPS supera le soglie anti-cheat
  * 1. Il token QR corrisponde a una quest principale attiva
  * 2. L'id passato nel path corrisponde alla quest del token (anti-spoofing)
  * 3. Il giocatore non l'ha gia' completata
  * 4. La quest ha exactPosition registrata (e' stata piazzata)
  * 5. La posizione GPS rientra nel raggio di validazione
  * 6. La quest ha un collezionabile associato
+ *
+ * Lo step 0 e' eseguito fail-fast prima di qualsiasi I/O.
  *
  * In caso di successo registra il completamento, sblocca il collezionabile,
  * aggiorna i punti del giocatore e ritorna i dati per la response.
@@ -169,7 +186,12 @@ export async function scanQr(
   questId: string,
   qrToken: string,
   playerPosition: GeoPoint,
+  fix?: GeoFixQualityMetadata,
 ): Promise<ScanQrResult> {
+  if (fix) {
+    validateGeoFix(fix);
+  }
+
   const questByToken = await findPrimaryQuestByQrToken(qrToken);
   if (!questByToken) {
     throw new ConflictError('QR token non valido', 'INVALID_QR_TOKEN');
@@ -231,6 +253,7 @@ export async function scanQr(
       pointsAwarded,
       collectibleId: String(collectible._id),
       distance: Math.round(distance),
+      hasFix: fix !== undefined,
     },
     'Quest principale completata',
   );

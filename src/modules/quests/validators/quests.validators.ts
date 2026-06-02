@@ -18,6 +18,33 @@ const geoPointSchema = z
   .strict();
 
 /**
+ * Validator zod per i metadati di qualita' di un fix GPS, allegati
+ * opzionalmente ai payload di check-in e scansione QR (shared-types
+ * v0.5.0+).
+ *
+ * Applica solo controlli di sanita' strutturale sui campi:
+ *  - accuracy: numero positivo, upper bound 100km come limite di
+ *    plausibilita' (oltre sarebbe certamente un bug del client).
+ *  - clientTimestamp: intero positivo in ms epoch.
+ *
+ * I controlli di business (rifiuto fix imprecisi o vecchi rispetto
+ * alle soglie configurate via env) sono in validateGeoFix dentro
+ * src/modules/quests/utils/geo.utils.ts.
+ */
+const geoFixSchema = z
+  .object({
+    accuracy: z
+      .number()
+      .positive("L'accuracy deve essere positiva")
+      .max(100000, "L'accuracy oltre 100km non e' plausibile"),
+    clientTimestamp: z
+      .number()
+      .int('clientTimestamp deve essere un intero')
+      .positive('clientTimestamp deve essere positivo'),
+  })
+  .strict();
+
+/**
  * Validator zod per i path parameter contenenti un ObjectId di MongoDB.
  *
  * Verifica solo la forma (24 caratteri hex), non l'esistenza nel database:
@@ -75,10 +102,14 @@ export type ListQuestsQuery = z.infer<typeof listQuestsQuerySchema>;
  *
  * Il giocatore invia la propria posizione GPS corrente per il check-in.
  * Il service verifica che rientri nel raggio della quest secondaria.
+ *
+ * Il campo `fix` e' opzionale: se presente, il service applica la
+ * validazione anti-cheat (rifiuta fix troppo imprecisi o vecchi).
  */
 export const checkInSchema = z
   .object({
     position: geoPointSchema,
+    fix: geoFixSchema.optional(),
   })
   .strict();
 
@@ -90,11 +121,15 @@ export type CheckInInput = z.infer<typeof checkInSchema>;
  * Riceve il token estratto dal QR code scansionato e la posizione GPS
  * del giocatore. Il token e' una stringa opaque la cui validita' viene
  * verificata dal service contro il valore registrato per la quest.
+ *
+ * Il campo `fix` e' opzionale: se presente, il service applica la
+ * validazione anti-cheat (rifiuta fix troppo imprecisi o vecchi).
  */
 export const scanQrSchema = z
   .object({
     qrToken: z.string().min(1, 'Token QR obbligatorio').max(500, 'Token QR troppo lungo'),
     position: geoPointSchema,
+    fix: geoFixSchema.optional(),
   })
   .strict();
 

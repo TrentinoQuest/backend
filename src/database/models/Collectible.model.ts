@@ -12,6 +12,16 @@ export enum CollectibleRarity {
 }
 
 /**
+ * Stato del ciclo di vita del collezionabile. Coerente con il soft-delete
+ * delle quest: un collezionabile archiviato non e' piu' assegnabile a nuove
+ * quest ma resta negli album dei giocatori che lo hanno gia' sbloccato.
+ */
+export enum CollectibleStatus {
+  ACTIVE = 'active',
+  ARCHIVED = 'archived',
+}
+
+/**
  * Interfaccia del collezionabile.
  *
  * Un collezionabile e' un oggetto digitale unico che il giocatore sblocca
@@ -26,6 +36,7 @@ export interface ICollectible extends Document {
   rarity: CollectibleRarity;
   createdAt: Date;
   updatedAt: Date;
+  status: CollectibleStatus;
 }
 
 const collectibleSchema = new Schema<ICollectible>(
@@ -53,6 +64,11 @@ const collectibleSchema = new Schema<ICollectible>(
       enum: Object.values(CollectibleRarity),
       required: true,
       default: CollectibleRarity.COMMON,
+    },
+    status: {
+      type: String,
+      enum: Object.values(CollectibleStatus),
+      default: CollectibleStatus.ACTIVE,
     },
   },
   {
