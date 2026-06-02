@@ -46,6 +46,7 @@ function serializeOperatorQuest(quest: IPrimaryQuest): OperatorQuestView {
           lng: quest.exactPosition.coordinates[0],
         }
       : null,
+    qrToken: quest.qrToken ?? null,
   } as OperatorQuestView;
 }
 

@@ -51,6 +51,7 @@ function serializeQuest(quest: IQuest): AnyQuest {
       searchRadiusMeters: primary.searchRadiusMeters,
       collectibleId: primary.collectibleId ? String(primary.collectibleId) : null,
       placementStatus: primary.placementStatus,
+      qrToken: primary.qrToken ?? null,
     };
   }
 
