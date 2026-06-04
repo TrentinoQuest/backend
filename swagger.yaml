@@ -969,6 +969,153 @@ components:
           type: integer
         offset:
           type: integer
+    AnalyticsGranularity:
+      type: string
+      enum: [day, week, month]
+
+    AnalyticsSummary:
+      type: object
+      description: |
+        Riepilogo dei contatori globali del sistema: utenti, quest attive
+        (suddivise per tipo), completamenti, attivita affiliate,
+        collezionabili, quest in attesa di piazzamento.
+      required:
+        - totalPlayers
+        - totalActiveQuests
+        - totalActivePrimaryQuests
+        - totalActiveSecondaryQuests
+        - totalCompletions
+        - totalApprovedBusinesses
+        - totalCollectibles
+        - pendingPlacements
+      properties:
+        totalPlayers:
+          type: integer
+        totalActiveQuests:
+          type: integer
+        totalActivePrimaryQuests:
+          type: integer
+        totalActiveSecondaryQuests:
+          type: integer
+        totalCompletions:
+          type: integer
+        totalApprovedBusinesses:
+          type: integer
+        totalCollectibles:
+          type: integer
+        pendingPlacements:
+          type: integer
+
+    CompletionsOverTimePoint:
+      type: object
+      required: [date, count]
+      properties:
+        date:
+          type: string
+          format: date-time
+        count:
+          type: integer
+
+    CompletionsOverTimeResponse:
+      type: object
+      description: |
+        Serie temporale dei completamenti aggregata per granularita'
+        (day/week/month). Include sempre l'intervallo applicato per
+        facilitare il debug e il rendering nel frontend.
+      required: [granularity, from, to, data]
+      properties:
+        granularity:
+          $ref: '#/components/schemas/AnalyticsGranularity'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompletionsOverTimePoint'
+
+    TopQuestEntry:
+      type: object
+      required: [questId, name, type, completionCount]
+      properties:
+        questId:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestType'
+        completionCount:
+          type: integer
+
+    NeverCompletedQuestEntry:
+      type: object
+      description: |
+        Quest attiva per cui non esiste alcun completamento. Segnala
+        all'admin una potenziale "zona ignorata" (RF39).
+      required: [questId, name, type, createdAt]
+      properties:
+        questId:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestType'
+        createdAt:
+          type: string
+          format: date-time
+
+    CompletionsHeatmapPoint:
+      type: object
+      required: [lat, lng, completedAt]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        completedAt:
+          type: string
+          format: date-time
+
+    CompletionsHeatmapResponse:
+      type: object
+      description: |
+        Coordinate GPS dei giocatori al momento del completamento, usate
+        per renderizzare una heatmap dei flussi turistici. Le posizioni
+        non sono quelle delle quest ma quelle dei giocatori, cosi' da
+        riflettere il transito effettivo sul territorio.
+      required: [from, to, points]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompletionsHeatmapPoint'
+
+    LeaderboardEntry:
+      type: object
+      required: [playerId, username, totalPoints]
+      properties:
+        playerId:
+          type: string
+        username:
+          type: string
+        totalPoints:
+          type: integer
+          minimum: 0
   responses:
     Unauthorized:
       description: Token JWT mancante o non valido.
@@ -2137,3 +2284,171 @@ paths:
                   $ref: '#/components/schemas/OfferWithBusiness'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /admin/analytics/summary:
+    get:
+      tags: [analytics]
+      summary: Riepilogo contatori globali (admin)
+      description: |
+        Restituisce i contatori globali del sistema per la dashboard
+        di benvenuto dell'admin: utenti, quest attive, completamenti,
+        attivita affiliate, collezionabili, quest pending.
+      responses:
+        '200':
+          description: Contatori globali
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/completions-over-time:
+    get:
+      tags: [analytics]
+      summary: Serie temporale dei completamenti (admin)
+      description: |
+        Aggregazione dei completamenti per giorno/settimana/mese
+        nell'intervallo richiesto. Default: ultimi 30 giorni,
+        granularita' day. Include anche completamenti di quest archiviate
+        (un completamento e' un evento storico avvenuto). Risponde al
+        requisito RF39 di stagionalita'.
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Inizio intervallo (default 30 giorni prima di "to")
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Fine intervallo (default ora)
+        - name: granularity
+          in: query
+          schema:
+            $ref: '#/components/schemas/AnalyticsGranularity'
+          description: Granularita' di aggregazione (default day)
+      responses:
+        '200':
+          description: Serie temporale
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletionsOverTimeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/top-quests:
+    get:
+      tags: [analytics]
+      summary: Quest piu' completate (admin)
+      description: |
+        Top N quest per numero di completamenti, in ordine decrescente.
+        Include anche completamenti di quest archiviate. Default limit 10.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: Top quest
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TopQuestEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/never-completed-quests:
+    get:
+      tags: [analytics]
+      summary: Quest attive mai completate (admin)
+      description: |
+        Lista delle quest in stato active per cui non esiste alcun
+        completamento. Segnala zone potenzialmente "ignorate" dai
+        giocatori (RF39). Non considera quest inactive o archived.
+      responses:
+        '200':
+          description: Quest mai completate
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NeverCompletedQuestEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/completions-heatmap:
+    get:
+      tags: [analytics]
+      summary: Heatmap dei completamenti (admin)
+      description: |
+        Punti GPS dei completamenti nell'intervallo richiesto, per
+        renderizzare una heatmap dei flussi turistici. Default: ultimi
+        90 giorni. Le coordinate sono quelle del giocatore al momento
+        del completamento (non quelle della quest), cosi' la heatmap
+        riflette il transito effettivo sul territorio.
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Punti heatmap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletionsHeatmapResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/leaderboard:
+    get:
+      tags: [analytics]
+      summary: Classifica giocatori per punti (admin)
+      description: |
+        Top N giocatori ordinati per totalPoints decrescente.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: Top giocatori
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
