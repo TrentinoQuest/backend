@@ -1,71 +1,8 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
 import { env } from './config/env';
 import { logger } from './config/logger';
-import { requestLogger } from './middleware/request-logger';
-import { errorHandler } from './middleware/error-handler';
-import { createSwaggerRouter } from './middleware/swagger';
-import { createOpenApiValidator } from './middleware/openapi-validator';
-import { createAuthRouter } from './modules/auth/routes/auth.routes';
-import { createQuestsRouter } from './modules/quests/routes/quests.routes';
-import { createBusinessRouter } from './modules/business/routes/business.routes';
+import { app } from './app';
 import { startRefreshTokenCleanupJob } from './jobs/refresh-token-cleanup.job';
-import {
-  connectWithRetry,
-  disconnectFromDatabase,
-  getDatabaseStatus,
-} from './database/connection/mongoose';
-
-const app = express();
-
-// Middleware globali. L'ordine di registrazione è significativo:
-// helmet e cors devono precedere il parser del body e le route applicative.
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use(requestLogger);
-
-/**
- * Health check endpoint.
- * Utilizzato da sistemi di monitoring e load balancer per verificare
- * che il servizio sia in esecuzione e responsivo. Espone anche lo stato
- * della connessione al database per facilitare la diagnosi di problemi
- * di infrastruttura.
- */
-app.get('/health', (_req: Request, res: Response) => {
-  const dbStatus = getDatabaseStatus();
-  const isHealthy = dbStatus === 'connected';
-  res.status(isHealthy ? 200 : 503).json({
-    status: isHealthy ? 'ok' : 'degraded',
-    service: 'trentino-quest-backend',
-    timestamp: new Date().toISOString(),
-    dependencies: {
-      database: dbStatus,
-    },
-  });
-});
-
-// Documentazione OpenAPI: Swagger UI a /api/v1/docs e spec JSON a /api/v1/docs/openapi.json
-app.use('/api/v1', createSwaggerRouter());
-
-// Validazione automatica delle richieste contro lo schema OpenAPI.
-// Deve essere registrata DOPO Swagger UI (per non validare le sue route)
-// e PRIMA delle route applicative (per validarle tutte).
-app.use(createOpenApiValidator());
-
-// Route dei moduli applicativi.
-app.use('/api/v1/auth', createAuthRouter());
-
-// Le route del modulo quests sono tutte sotto /api/v1/quests, incluse quelle
-app.use('/api/v1', createQuestsRouter());
-
-// Le route del modulo business sono tutte sotto /api/v1/business, incluse quelle
-app.use('/api/v1', createBusinessRouter());
-
-// L'error handler globale deve essere registrato come ultimo middleware,
-// dopo tutte le route, per intercettare gli errori propagati da next(err).
-app.use(errorHandler);
+import { connectWithRetry, disconnectFromDatabase } from './database/connection/mongoose';
 
 /**
  * Avvio dell'applicazione.
