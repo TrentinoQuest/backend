@@ -758,10 +758,15 @@ components:
           nullable: true
     PlaceQuestRequest:
       type: object
-      required: [exactPosition]
+      required:
+        - exactPosition
+        - scannedToken
       properties:
         exactPosition:
           $ref: '#/components/schemas/GeoPoint'
+        scannedToken:
+          type: string
+          nullable: true
         fix:
           type: object
           required: [accuracy, clientTimestamp]

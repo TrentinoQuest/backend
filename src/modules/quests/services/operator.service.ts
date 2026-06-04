@@ -3,10 +3,9 @@ import { IPrimaryQuest, PlacementStatus, QuestStatus } from '../../../database/m
 import {
   listPrimaryQuestsByPlacement,
   findPrimaryQuestById,
-  setQuestPlacement,
+  setQuestPlacedPosition,
   updateQuestExactPosition,
   setQuestReported,
-  generateQrToken,
   ListOperatorQuestsFilter,
 } from '../repositories/operator.repository';
 import { setQuestStatus } from '../repositories/quest.repository';
@@ -64,14 +63,19 @@ export async function getPrimaryQuestForOperator(id: string): Promise<IPrimaryQu
 /**
  * Registra il piazzamento fisico di un QR code (RF40).
  *
+ * Nel modello adottato il qrToken viene generato in anticipo dall'admin
+ * e stampato; l'operatore arriva sul posto col QR gia' stampato, lo
+ * affigge e lo scansiona. Lo scannedToken letto dal QR fisico viene
+ * verificato contro il token atteso per la quest: questo intercetta
+ * l'errore di affiggere il QR sbagliato nel punto sbagliato.
+ *
  * Valida l'eventuale fix GPS (anti-cheat) e verifica che la quest non
- * sia gia' stata piazzata: ripiazzare un QR gia' attivo richiede invece
- * l'operazione di aggiornamento posizione. Genera il token univoco e
- * porta lo stato a PLACED.
+ * sia gia' piazzata (per ripiazzare si usa l'aggiornamento posizione).
  */
 export async function placeQuest(
   id: string,
   exactPosition: GeoPoint,
+  scannedToken: string,
   fix?: GeoFixQualityMetadata,
 ): Promise<IPrimaryQuest> {
   if (fix) {
@@ -82,21 +86,31 @@ export async function placeQuest(
   if (!quest) {
     throw new NotFoundError('Quest principale non trovata', 'QUEST_NOT_FOUND');
   }
+  if (!quest.qrToken) {
+    throw new ConflictError(
+      'QR non ancora generato per questa quest: generarlo dal backoffice admin',
+      'QUEST_QR_NOT_GENERATED',
+    );
+  }
   if (quest.placementStatus === PlacementStatus.PLACED) {
     throw new ConflictError(
       "QR gia' piazzato: usa l'aggiornamento posizione",
       'QUEST_ALREADY_PLACED',
     );
   }
+  if (scannedToken !== quest.qrToken) {
+    throw new ConflictError(
+      'Il QR scansionato non corrisponde a questa quest',
+      'QR_TOKEN_MISMATCH',
+    );
+  }
 
-  const qrToken = generateQrToken();
-  const updated = await setQuestPlacement(id, geoPointToGeoJson(exactPosition), qrToken);
+  const updated = await setQuestPlacedPosition(id, geoPointToGeoJson(exactPosition));
   if (!updated) {
     throw new NotFoundError('Quest principale non trovata', 'QUEST_NOT_FOUND');
   }
   return updated;
 }
-
 /**
  * Aggiorna la posizione di un QR gia' piazzato (RF41).
  *

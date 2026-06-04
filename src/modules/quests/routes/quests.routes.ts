@@ -36,6 +36,7 @@ import {
   updateCollectibleHandler,
   archiveCollectibleHandler,
 } from '../controllers/collectible-admin.controller';
+import { generateQuestQrHandler } from '../controllers/quest-admin.controller';
 
 /**
  * Crea il router con gli endpoint del modulo quests.
@@ -113,6 +114,13 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.ADMIN),
     deactivateAdminQuestHandler,
+  );
+
+  router.post(
+    '/admin/quests/:id/generate-qr',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    generateQuestQrHandler,
   );
 
   // Lista collezionabili per dropdown nei form di creazione quest principali

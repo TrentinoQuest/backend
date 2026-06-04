@@ -104,7 +104,7 @@ export async function placeQuestHandler(
   try {
     const params = objectIdParamSchema.parse(req.params);
     const body = placeQuestSchema.parse(req.body);
-    const quest = await placeQuest(params.id, body.exactPosition, body.fix);
+    const quest = await placeQuest(params.id, body.exactPosition, body.scannedToken, body.fix);
     res.status(200).json(serializeOperatorQuest(quest));
   } catch (err) {
     next(err);

@@ -136,3 +136,32 @@ export async function setQuestReported(id: string): Promise<IPrimaryQuest | null
     { new: true },
   );
 }
+
+/**
+ * Registra la posizione di piazzamento di un QR il cui token e' gia'
+ * stato generato dall'admin. Imposta exactPosition e placementStatus
+ * a PLACED, senza toccare il qrToken esistente.
+ */
+export async function setQuestPlacedPosition(
+  id: string,
+  exactPosition: GeoJsonPoint,
+): Promise<IPrimaryQuest | null> {
+  if (!Types.ObjectId.isValid(id)) {
+    return null;
+  }
+  return PrimaryQuest.findByIdAndUpdate(
+    id,
+    { exactPosition, placementStatus: PlacementStatus.PLACED },
+    { new: true, runValidators: true },
+  );
+}
+
+/**
+ * Imposta il qrToken di una quest principale (azione admin "Genera QR").
+ */
+export async function setQuestQrToken(id: string, qrToken: string): Promise<IPrimaryQuest | null> {
+  if (!Types.ObjectId.isValid(id)) {
+    return null;
+  }
+  return PrimaryQuest.findByIdAndUpdate(id, { qrToken }, { new: true });
+}

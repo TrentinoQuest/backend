@@ -21,6 +21,7 @@ import {
   ISecondaryQuest,
   QuestType,
 } from '../../../database/models/Quest.model';
+import { generateQuestQr } from '../services/quest-admin.service';
 
 /**
  * Serializza una quest per la response HTTP admin.
@@ -189,6 +190,20 @@ export async function deactivateAdminQuestHandler(
     const params = objectIdParamSchema.parse(req.params);
     const quest = await deactivateQuest(params.id);
     res.status(200).json(serializeQuest(quest));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function generateQuestQrHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const params = objectIdParamSchema.parse(req.params);
+    const quest = await generateQuestQr(params.id);
+    res.status(200).json(serializeQuest(quest)); // usa il serializer admin esistente
   } catch (err) {
     next(err);
   }
