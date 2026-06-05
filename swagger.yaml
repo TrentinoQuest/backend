@@ -1549,7 +1549,7 @@ paths:
             $ref: '#/components/schemas/QuestStatus'
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 500, default: 20 }
         - name: offset
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -2320,14 +2320,14 @@ paths:
           in: query
           schema:
             type: string
-            format: date-time
-          description: Inizio intervallo (default 30 giorni prima di "to")
+            format: date
+          description: Inizio intervallo in formato YYYY-MM-DD (default 30 giorni prima di "to")
         - name: to
           in: query
           schema:
             type: string
-            format: date-time
-          description: Fine intervallo (default ora)
+            format: date
+          description: Fine intervallo in formato YYYY-MM-DD (default oggi)
         - name: granularity
           in: query
           schema:
@@ -2409,12 +2409,14 @@ paths:
           in: query
           schema:
             type: string
-            format: date-time
+            format: date
+          description: Inizio intervallo in formato YYYY-MM-DD (default 90 giorni fa)
         - name: to
           in: query
           schema:
             type: string
-            format: date-time
+            format: date
+          description: Fine intervallo in formato YYYY-MM-DD (default oggi)
       responses:
         '200':
           description: Punti heatmap
