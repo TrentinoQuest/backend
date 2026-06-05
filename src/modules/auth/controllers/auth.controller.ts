@@ -16,22 +16,30 @@ import {
   AuthResult,
   TokenPair,
 } from '../services/auth.service';
-import { IUser } from '../../../database/models/User.model';
+import { IUser, IPlayer, UserRole } from '../../../database/models/User.model';
+import { computeLevelFromXp, computeXpToNextLevel } from '../../../config/gamification';
 
 /**
  * Serializza un utente per la response HTTP.
  *
  * Esclude la password e altri campi che non devono mai essere esposti
- * tramite API. Mantiene tutti i campi specifici del ruolo grazie al
- * discriminator pattern di Mongoose.
+ * tramite API. Per i giocatori aggiunge i campi calcolati levelTitle
+ * e xpToNextLevel che non sono persistiti nel DB.
  */
 function serializeUser(user: IUser): Record<string, unknown> {
   const obj = user.toObject({ versionKey: false });
   delete (obj as Record<string, unknown>).password;
-  return {
+  const result: Record<string, unknown> = {
     ...obj,
     id: String(user._id),
   };
+  if (user.role === UserRole.PLAYER) {
+    const player = user as IPlayer;
+    const { title: levelTitle } = computeLevelFromXp(player.xp ?? 0);
+    result.levelTitle = levelTitle;
+    result.xpToNextLevel = computeXpToNextLevel(player.xp ?? 0);
+  }
+  return result;
 }
 
 /**

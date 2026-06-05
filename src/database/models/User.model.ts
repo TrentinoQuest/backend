@@ -27,12 +27,19 @@ export interface IUser extends Document {
 
 /**
  * Estensione di IUser per il ruolo Giocatore.
- * Aggiunge gli attributi specifici della classe Giocatore del D2.
+ * Aggiunge gli attributi specifici della classe Giocatore del D2
+ * e i campi di gamification (XP, livelli, streak, shield).
  */
 export interface IPlayer extends IUser {
   username: string;
   totalPoints: number;
   registrationDate: Date;
+  xp: number;
+  level: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastQuestDate: Date | null;
+  streakShieldActive: boolean;
 }
 
 /**
@@ -156,6 +163,12 @@ const playerSchema = new Schema<IPlayer>({
     type: Date,
     default: Date.now,
   },
+  xp: { type: Number, default: 0, min: 0 },
+  level: { type: Number, default: 1, min: 1, max: 10 },
+  currentStreak: { type: Number, default: 0, min: 0 },
+  longestStreak: { type: Number, default: 0, min: 0 },
+  lastQuestDate: { type: Date, default: null },
+  streakShieldActive: { type: Boolean, default: false },
 });
 
 /**
