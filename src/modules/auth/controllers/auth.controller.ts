@@ -6,6 +6,7 @@ import {
   passwordRecoverySchema,
   refreshTokenSchema,
   logoutSchema,
+  deviceTokenSchema,
 } from '../validators/auth.validators';
 import {
   registerPlayer,
@@ -16,7 +17,9 @@ import {
   AuthResult,
   TokenPair,
 } from '../services/auth.service';
-import { IUser, IPlayer, UserRole } from '../../../database/models/User.model';
+import { z } from 'zod';
+import { Player, IUser, IPlayer, UserRole } from '../../../database/models/User.model';
+import { UnauthorizedError, ConflictError } from '../../../utils/errors';
 import { computeLevelFromXp, computeXpToNextLevel } from '../../../config/gamification';
 
 /**
@@ -177,6 +180,71 @@ export async function passwordRecoveryHandler(
     const input = passwordRecoverySchema.parse(req.body);
     await requestPasswordRecovery(input);
     res.status(202).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deviceTokenHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const { fcmToken } = deviceTokenSchema.parse(req.body);
+    await Player.findByIdAndUpdate(req.user._id, { fcmToken });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+const playerClassSchema = z
+  .object({ playerClass: z.enum(['castle_hunter', 'forest_keeper', 'urban_explorer']) })
+  .strict();
+
+export async function setPlayerClassHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const { playerClass } = playerClassSchema.parse(req.body);
+    const player = await Player.findById(req.user._id);
+    if (!player) throw new UnauthorizedError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
+    if (player.playerClass !== null && player.playerClass !== undefined) {
+      throw new ConflictError('Classe già impostata', 'CLASS_ALREADY_SET');
+    }
+    player.playerClass = playerClass;
+    await player.save();
+    res.status(200).json({ playerClass: player.playerClass });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function completeOnboardingHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const { playerClass } = playerClassSchema.parse(req.body);
+    const player = await Player.findById(req.user._id);
+    if (!player) throw new UnauthorizedError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
+    if (player.onboardingCompleted) {
+      res.status(200).json({ message: 'Onboarding già completato' });
+      return;
+    }
+    player.playerClass = player.playerClass ?? playerClass;
+    player.onboardingCompleted = true;
+    player.xp += 100;
+    player.coins = (player.coins ?? 0) + 50;
+    await player.save();
+    res.status(200).json({ xpAwarded: 100, coinsAwarded: 50 });
   } catch (err) {
     next(err);
   }

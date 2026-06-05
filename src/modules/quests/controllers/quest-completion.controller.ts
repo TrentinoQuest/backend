@@ -90,6 +90,11 @@ function serializeCollectible(collectible: ICollectible): ScanQrResponse['collec
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
     status: collectible.status,
+    lore: collectible.lore ?? null,
+    audioGuideUrl: collectible.audioGuideUrl ?? null,
+    coordinates: collectible.coordinates
+      ? { lat: collectible.coordinates.coordinates[1], lng: collectible.coordinates.coordinates[0] }
+      : null,
   };
 }
 

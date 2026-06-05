@@ -33,6 +33,14 @@ import { Completion } from '../src/database/models/Completion.model';
 import { randomBytes } from 'node:crypto';
 import { Admin, Player, UserRole, Maintenance, Business } from '../src/database/models/User.model';
 import { Offer } from '../src/database/models/Offer.model';
+import { LoreQuestion, LoreAnswer } from '../src/database/models/LoreQuestion.model';
+import { Valley } from '../src/database/models/Valley.model';
+import { LeagueSeason, LeagueMembership, LeagueTier } from '../src/database/models/League.model';
+import { DailyQuestAssignment } from '../src/database/models/DailyQuest.model';
+import { Kudos } from '../src/database/models/Kudos.model';
+import { CoopChallenge } from '../src/database/models/CoopChallenge.model';
+import { Coupon } from '../src/database/models/Coupon.model';
+import { Friendship } from '../src/database/models/Friendship.model';
 import { BusinessType, BusinessApprovalStatus } from '@trentino-quest/shared-types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -70,6 +78,16 @@ async function cleanCollections(): Promise<void> {
   await Quest.deleteMany({});
   await Collectible.deleteMany({});
   await Offer.deleteMany({});
+  await LoreQuestion.deleteMany({});
+  await LoreAnswer.deleteMany({});
+  await Valley.deleteMany({});
+  await LeagueSeason.deleteMany({});
+  await LeagueMembership.deleteMany({});
+  await DailyQuestAssignment.deleteMany({});
+  await Kudos.deleteMany({});
+  await CoopChallenge.deleteMany({});
+  await Coupon.deleteMany({});
+  await Friendship.deleteMany({});
   logger.info('Pulizia completata');
 }
 
@@ -569,6 +587,647 @@ async function seedCompletions(
   logger.info({ created, skipped }, 'Completamenti inseriti');
 }
 
+// ── Dati gamification demo ─────────────────────────────────────────────────
+
+/**
+ * Imposta dati di gamification realistici su tre player per la demo.
+ * Idempotente: salta i player che hanno già xp > 0.
+ */
+async function seedGamificationData(playerIds: Types.ObjectId[]): Promise<void> {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(0, 0, 0, 0);
+
+  const demos: {
+    idx: number;
+    xp: number;
+    level: number;
+    currentStreak: number;
+    longestStreak: number;
+    streakShieldActive: boolean;
+    lastQuestDate: Date;
+  }[] = [
+    {
+      idx: 0,
+      xp: 650,
+      level: 3,
+      currentStreak: 5,
+      longestStreak: 12,
+      streakShieldActive: false,
+      lastQuestDate: yesterday,
+    },
+    {
+      idx: 1,
+      xp: 350,
+      level: 2,
+      currentStreak: 3,
+      longestStreak: 7,
+      streakShieldActive: false,
+      lastQuestDate: yesterday,
+    },
+    {
+      idx: 2,
+      xp: 200,
+      level: 2,
+      currentStreak: 7,
+      longestStreak: 7,
+      streakShieldActive: true,
+      lastQuestDate: yesterday,
+    },
+  ];
+
+  let updated = 0;
+  for (const demo of demos) {
+    const player = await Player.findById(playerIds[demo.idx]);
+    if (!player || player.xp > 0) continue;
+    await Player.findByIdAndUpdate(playerIds[demo.idx], {
+      xp: demo.xp,
+      level: demo.level,
+      currentStreak: demo.currentStreak,
+      longestStreak: demo.longestStreak,
+      streakShieldActive: demo.streakShieldActive,
+      lastQuestDate: demo.lastQuestDate,
+    });
+    updated++;
+  }
+
+  logger.info({ updated }, 'Dati gamification demo impostati');
+}
+
+// ── Domande lore ──────────────────────────────────────────────────────────
+
+async function seedLoreQuestions(): Promise<void> {
+  const count = await LoreQuestion.countDocuments({});
+  if (count >= 30) {
+    logger.info({ count }, "Domande lore gia' presenti, skip");
+    return;
+  }
+
+  const questions = [
+    // Storia
+    {
+      text: 'In quale anno si tenne il Concilio di Trento?',
+      options: ['1437', '1545', '1618', '1492'],
+      correctOptionIndex: 1,
+      explanation:
+        'Il Concilio di Trento si svolse dal 1545 al 1563 e fu uno dei momenti chiave della Controriforma cattolica.',
+      category: 'storia',
+    },
+    {
+      text: 'Come si chiama la fortezza più grande del Trentino?',
+      options: ['Castel Beseno', 'Castel Thun', 'Castel Brughier', 'Castel Ivano'],
+      correctOptionIndex: 0,
+      explanation:
+        'Castel Beseno, arroccato sulla Vallagarina, è la fortezza più grande del Trentino.',
+      category: 'storia',
+    },
+    {
+      text: 'Chi fu Cesare Battisti?',
+      options: [
+        'Un pittore rinascimentale trentino',
+        'Un geografo e irredentista trentino',
+        'Un arcivescovo di Trento',
+        'Un condottiero medievale',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'Cesare Battisti fu geografo, politico e irredentista trentino, giustiziato dagli austriaci nel 1916.',
+      category: 'storia',
+    },
+    {
+      text: 'Quale imperatore romano fondò la città di Trento?',
+      options: ['Augusto', 'Giulio Cesare', 'Traiano', 'Claudio'],
+      correctOptionIndex: 0,
+      explanation:
+        "Tridentum fu fondata dai Romani nell'89 a.C. sotto il dominio di Augusto come castrum militare.",
+      category: 'storia',
+    },
+    {
+      text: 'Come si chiama il museo del Castello del Buonconsiglio?',
+      options: [
+        'Museo Storico Trentino',
+        "Museo Provinciale d'Arte",
+        'Museo Nazionale della Montagna',
+        'Museo degli Usi e Costumi',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "Il Castello del Buonconsiglio ospita il Museo Provinciale d'Arte, con opere dal Medioevo al Novecento.",
+      category: 'storia',
+    },
+    // Natura
+    {
+      text: 'Quale animale simbolo compare sullo stemma del Trentino?',
+      options: ['Orso', 'Aquila', 'Cervo', 'Camoscio'],
+      correctOptionIndex: 1,
+      explanation:
+        "L'aquila è il simbolo araldico del Trentino, presente sullo stemma provinciale da secoli.",
+      category: 'natura',
+    },
+    {
+      text: 'In quale parco naturale si trova il Lago di Tovel?',
+      options: [
+        'Parco Nazionale dello Stelvio',
+        'Parco Naturale Adamello-Brenta',
+        'Parco Naturale Paneveggio',
+        'Parco Naturale del Monte Baldo',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'Il Lago di Tovel si trova nel Parco Naturale Adamello-Brenta, famoso per le sue acque cristalline.',
+      category: 'natura',
+    },
+    {
+      text: 'Quale cima delle Dolomiti ha la forma più caratteristica a forma di torre?',
+      options: ['Marmolada', 'Catinaccio', 'Tre Cime di Lavaredo', 'Pale di San Martino'],
+      correctOptionIndex: 2,
+      explanation:
+        'Le Tre Cime di Lavaredo sono il simbolo per eccellenza delle Dolomiti, patrimonio UNESCO dal 2009.',
+      category: 'natura',
+    },
+    {
+      text: 'Che cosa sono i "lagorai"?',
+      options: [
+        'Laghi alpini artificiali',
+        'Altopiani con laghi e torbiere',
+        'Antichi mulini lungo i fiumi',
+        'Rocce laviche del vulcano Pasubio',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'I Lagorai sono una catena montuosa con decine di laghi e torbiere, meno frequentata delle Dolomiti.',
+      category: 'natura',
+    },
+    {
+      text: "Quale fiume scorre lungo la Valle dell'Adige?",
+      options: ['Brenta', 'Adige', 'Chiese', 'Noce'],
+      correctOptionIndex: 1,
+      explanation:
+        "L'Adige è il secondo fiume più lungo d'Italia e attraversa tutta la Valle dell'Adige trentina.",
+      category: 'natura',
+    },
+    // Leggende
+    {
+      text: 'Chi è il Re Laurino secondo la leggenda delle Dolomiti?',
+      options: [
+        'Un gigante custode dei monti',
+        'Un re dei nani custode di un giardino di rose',
+        'Il principe fondatore di Trento',
+        'Uno spirito delle acque alpine',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "Re Laurino è un nano leggendario che custodiva un giardino di rose sulle Dolomiti. Il suo giardino incantato si illumina al tramonto nel fenomeno dell'Enrosadira.",
+      category: 'leggende',
+    },
+    {
+      text: "Cos'è l'Enrosadira?",
+      options: [
+        'Un vento tipico delle Dolomiti',
+        'Il bagliore rosato delle Dolomiti al tramonto',
+        'Una danza folcloristica trentina',
+        'Un tipo di formaggio locale',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "L'Enrosadira è il fenomeno ottico che colora le Dolomiti di rosa e viola al tramonto, legato alla leggenda di Re Laurino.",
+      category: 'leggende',
+    },
+    {
+      text: "Quale santo è venerato nell'eremo di San Romedio in Val di Non?",
+      options: ['San Vigilio', 'San Romedio', 'San Venceslao', "Sant'Adelpreto"],
+      correctOptionIndex: 1,
+      explanation:
+        'San Romedio è un eremita che, secondo la leggenda, domò un orso dopo che questo aveva ucciso il suo cavallo, e lo usò come cavalcatura.',
+      category: 'leggende',
+    },
+    {
+      text: 'Secondo la leggenda, perché le acque del Lago di Tovel erano rosse?',
+      options: [
+        'Per una battaglia medievale',
+        "Per un'alga rossa chiamata Glenodinium sanguineum",
+        'Per depositi di minerali ferrosi',
+        'Per una maledizione di una strega locale',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "Il Lago di Tovel si tingeva di rosso grazie all'alga unicellulare Glenodinium sanguineum, fenomeno cessato negli anni '60.",
+      category: 'leggende',
+    },
+    {
+      text: 'Chi erano i Cimbri del Trentino?',
+      options: [
+        'Un popolo germanico che si insediò sugli altopiani trentini',
+        'Soldati romani di stanza a Tridentum',
+        'Tribù celtiche delle valli alpine',
+        'Mercanti medievali veneziani',
+      ],
+      correctOptionIndex: 0,
+      explanation:
+        'I Cimbri sono una minoranza linguistica di origine germanica che si insediò sugli altopiani trentini nel Medioevo.',
+      category: 'leggende',
+    },
+    // Gastronomia
+    {
+      text: 'Quale piatto è tipico della cucina trentina?',
+      options: ['Risotto al tartufo', 'Strangolapreti', 'Pappardelle al cinghiale', 'Arancini'],
+      correctOptionIndex: 1,
+      explanation:
+        'Gli strangolapreti sono gnocchi di pane e spinaci, uno dei piatti più tipici della tradizione culinaria trentina.',
+      category: 'gastronomia',
+    },
+    {
+      text: 'Il Trentino è famoso per la produzione di quale frutto?',
+      options: ['Aranci', 'Mele', 'Pesche', 'Uva da tavola'],
+      correctOptionIndex: 1,
+      explanation:
+        'Il Trentino è uno dei principali produttori di mele in Italia, in particolare nella Val di Non.',
+      category: 'gastronomia',
+    },
+    {
+      text: "Come si chiama il formaggio tipico dell'Altipiano di Piné?",
+      options: ['Asiago', 'Spressa delle Giudicarie', 'Vezzena', 'Puzzone di Moena'],
+      correctOptionIndex: 3,
+      explanation:
+        "Il Puzzone di Moena (Spretz Tzaorì in ladino) è un formaggio a pasta semidura dall'aroma intenso, tipico della Val di Fassa.",
+      category: 'gastronomia',
+    },
+    {
+      text: 'Qual è il vitigno autoctono trentino più celebre?',
+      options: ['Teroldego', 'Barolo', 'Amarone', 'Nebbiolo'],
+      correctOptionIndex: 0,
+      explanation:
+        'Il Teroldego Rotaliano è il vitigno autoctono più prestigioso del Trentino, coltivato sul Campo Rotaliano.',
+      category: 'gastronomia',
+    },
+    {
+      text: 'Cos\'è la "Zelten"?',
+      options: [
+        'Un vino dolce natalizio',
+        'Un pane dolce natalizio con frutta secca',
+        'Una grappa aromatizzata alle erbe',
+        'Un insaccato tipico della Valsugana',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'Lo Zelten è un dolce tradizionale natalizio trentino, un pane arricchito con fichi, noci, uvetta e datteri.',
+      category: 'gastronomia',
+    },
+    // Cultura
+    {
+      text: 'Quale lingua parlano i Ladini delle Dolomiti?',
+      options: [
+        'Un dialetto del friulano',
+        'Il ladino, lingua retoromanza',
+        'Un antico dialetto tedesco',
+        'Il provenzale alpino',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'Il ladino è una lingua retoromanza parlata nelle valli dolomitiche, riconosciuta come minoranza linguistica.',
+      category: 'cultura',
+    },
+    {
+      text: 'Quale istituzione universitaria ha sede a Trento?',
+      options: [
+        'Università degli Studi di Bolzano',
+        'Università degli Studi di Trento',
+        'Politecnico delle Alpi',
+        'Accademia Europea di Bolzano',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "L'Università degli Studi di Trento, fondata nel 1962, è costantemente tra le migliori università italiane per qualità della ricerca.",
+      category: 'cultura',
+    },
+    {
+      text: 'Cosa sono le "Malghe"?',
+      options: [
+        'Antichi ponti in pietra sulle valli',
+        'Alpeggi con strutture per la produzione casearia',
+        'Chiese romaniche di montagna',
+        'Mercati medievali itineranti',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'Le malghe sono strutture rurali di montagna usate per la monticazione del bestiame e la produzione di formaggi alpini.',
+      category: 'cultura',
+    },
+    {
+      text: 'Cosa si celebra il 15 agosto a Ferragosto in Trentino?',
+      options: [
+        'La festa della vendemmia',
+        "L'Assunzione di Maria con feste paesane e sagre",
+        "Il giorno dell'autonomia provinciale",
+        'La transumanza annuale',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        'Ferragosto è celebrato con processioni religiose, sagre e feste paesane in tutta la provincia.',
+      category: 'cultura',
+    },
+    {
+      text: 'Quale museo è dedicato agli usi e costumi della gente trentina?',
+      options: [
+        'Museo Civico di Rovereto',
+        'Museo degli Usi e Costumi della Gente Trentina',
+        'MART - Museo di Arte Moderna',
+        'Museo Tridentino di Scienze Naturali',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "Il Museo degli Usi e Costumi della Gente Trentina di San Michele all'Adige è uno dei più importanti musei etnografici d'Italia.",
+      category: 'cultura',
+    },
+    // Sport e territorio
+    {
+      text: 'Quale famosa corsa ciclistica passa regolarmente per il Trentino?',
+      options: ['Tour de France', "Giro d'Italia", 'Vuelta a España', 'Liegi-Bastogne-Liegi'],
+      correctOptionIndex: 1,
+      explanation:
+        "Il Giro d'Italia attraversa spesso le strade del Trentino, con arrivi e partenze iconici come il Passo dello Stelvio.",
+      category: 'cultura',
+    },
+    {
+      text: 'Qual è la vetta più alta del Trentino?',
+      options: ['Ortles', 'Cima Presanella', 'Adamello', 'Marmolada'],
+      correctOptionIndex: 1,
+      explanation:
+        "La Presanella (3.558 m) è la vetta più alta interamente in territorio trentino, nel gruppo dell'Adamello-Presanella.",
+      category: 'natura',
+    },
+    {
+      text: "Che cos'è il Trento Film Festival?",
+      options: [
+        'Un festival di cinema horror alpino',
+        'Il più antico festival dedicato al cinema di montagna ed esplorazione',
+        'Una rassegna di film storici sul Concilio di Trento',
+        'Un festival di cortometraggi studenteschi',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "Il Trento Film Festival, fondato nel 1952, è il più antico festival cinematografico dedicato alla montagna e all'esplorazione nel mondo.",
+      category: 'cultura',
+    },
+    {
+      text: "Quale specchio d'acqua è il più grande del Trentino?",
+      options: [
+        'Lago di Garda (parte trentina)',
+        'Lago di Caldonazzo',
+        'Lago di Molveno',
+        'Lago di Levico',
+      ],
+      correctOptionIndex: 0,
+      explanation:
+        'Il Lago di Garda ha la sua sponda settentrionale in territorio trentino (Alto Garda trentino), rendendola la parte più grande.',
+      category: 'natura',
+    },
+    {
+      text: 'Come si chiama il dialetto germanico parlato in alcune comunità della Valsugana?',
+      options: ['Mocheno', 'Cimbro', 'Bavarese antico', 'Alemmanno'],
+      correctOptionIndex: 0,
+      explanation:
+        'Il mocheno (bersntolerisch) è una lingua germanica parlata dalla minoranza mochena nella Valle del Fersina, in Valsugana.',
+      category: 'cultura',
+    },
+    {
+      text: 'Dove si trova il MUSE - Museo delle Scienze di Trento?',
+      options: [
+        'Nel centro storico medievale',
+        'Nel quartiere Le Albere, progettato da Renzo Piano',
+        'Sul colle del Doss Trento',
+        'Nel Castello del Buonconsiglio',
+      ],
+      correctOptionIndex: 1,
+      explanation:
+        "Il MUSE si trova nel quartiere Le Albere, riqualificazione dell'ex area industriale Michelin progettata dall'architetto Renzo Piano.",
+      category: 'cultura',
+    },
+  ];
+
+  await LoreQuestion.insertMany(questions.map((q) => ({ ...q, active: true })));
+  logger.info({ count: questions.length }, 'Domande lore inserite');
+}
+
+// ── Valli ──────────────────────────────────────────────────────────────────
+
+async function seedValleys(): Promise<void> {
+  const count = await Valley.countDocuments({});
+  if (count >= 10) {
+    logger.info({ count }, "Valli gia' presenti, skip");
+    return;
+  }
+
+  // Bounding box rettangolari approssimati in coordinate GeoJSON [lng, lat]
+  const valleys = [
+    {
+      name: 'Val di Non',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [10.85, 46.3],
+            [11.15, 46.3],
+            [11.15, 46.55],
+            [10.85, 46.55],
+            [10.85, 46.3],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Val di Sole',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [10.55, 46.28],
+            [10.95, 46.28],
+            [10.95, 46.48],
+            [10.55, 46.48],
+            [10.55, 46.28],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Valsugana',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [11.08, 45.92],
+            [11.55, 45.92],
+            [11.55, 46.18],
+            [11.08, 46.18],
+            [11.08, 45.92],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Val di Fiemme',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [11.28, 46.2],
+            [11.72, 46.2],
+            [11.72, 46.4],
+            [11.28, 46.4],
+            [11.28, 46.2],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Val di Fassa',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [11.58, 46.33],
+            [11.92, 46.33],
+            [11.92, 46.62],
+            [11.58, 46.62],
+            [11.58, 46.33],
+          ],
+        ],
+      },
+    },
+    {
+      name: "Valle dell'Adige",
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [10.88, 45.82],
+            [11.28, 45.82],
+            [11.28, 46.22],
+            [10.88, 46.22],
+            [10.88, 45.82],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Giudicarie',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [10.52, 45.82],
+            [10.95, 45.82],
+            [10.95, 46.18],
+            [10.52, 46.18],
+            [10.52, 45.82],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Valle dei Laghi',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [10.82, 45.88],
+            [11.08, 45.88],
+            [11.08, 46.15],
+            [10.82, 46.15],
+            [10.82, 45.88],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Rovereto e Vallagarina',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [10.92, 45.72],
+            [11.18, 45.72],
+            [11.18, 45.98],
+            [10.92, 45.98],
+            [10.92, 45.72],
+          ],
+        ],
+      },
+    },
+    {
+      name: 'Altopiano di Piné',
+      polygon: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [11.12, 46.03],
+            [11.38, 46.03],
+            [11.38, 46.22],
+            [11.12, 46.22],
+            [11.12, 46.03],
+          ],
+        ],
+      },
+    },
+  ];
+
+  await Valley.insertMany(valleys);
+  logger.info({ count: valleys.length }, 'Valli inserite');
+}
+
+// ── Lega iniziale ──────────────────────────────────────────────────────────
+
+function getMondayOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+function getSundayOfWeek(monday: Date): Date {
+  const d = new Date(monday);
+  d.setUTCDate(d.getUTCDate() + 6);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
+async function seedLeague(playerIds: Types.ObjectId[]): Promise<void> {
+  const now = new Date();
+  const weekStart = getMondayOfWeek(now);
+  const weekEnd = getSundayOfWeek(weekStart);
+
+  // Crea o recupera la stagione corrente
+  let season = await LeagueSeason.findOne({ active: true });
+  if (!season) {
+    season = await LeagueSeason.create({ weekStart, weekEnd, active: true });
+    logger.info('Stagione lega iniziale creata');
+  } else {
+    logger.info("Stagione lega gia' attiva, skip creazione");
+  }
+
+  // Crea membership per ogni player che non ne ha già una
+  let created = 0;
+  const groupId = 'seed-group-1';
+  for (const playerId of playerIds) {
+    const existing = await LeagueMembership.findOne({ playerId, seasonId: season._id });
+    if (!existing) {
+      await LeagueMembership.create({
+        playerId,
+        seasonId: season._id,
+        groupId,
+        tier: LeagueTier.PORFIDO,
+        weeklyXp: 0,
+      });
+      created++;
+    }
+  }
+
+  logger.info({ created }, 'Membership lega create');
+}
+
 // ── Punto di ingresso ──────────────────────────────────────────────────────
 
 async function run(): Promise<void> {
@@ -592,6 +1251,11 @@ async function run(): Promise<void> {
 
     const playerIds = await seedPlayers();
     await seedCompletions(playerIds, secondaryIds, primaryIds);
+    await seedGamificationData(playerIds);
+
+    await seedLoreQuestions();
+    await seedValleys();
+    await seedLeague(playerIds);
 
     logger.info('Seed completato con successo');
   } catch (err) {

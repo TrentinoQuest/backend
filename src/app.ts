@@ -9,6 +9,11 @@ import { createAuthRouter } from './modules/auth/routes/auth.routes';
 import { createQuestsRouter } from './modules/quests/routes/quests.routes';
 import { createBusinessRouter } from './modules/business/routes/business.routes';
 import { createAnalyticsRouter } from './modules/analytics/routes/analytics.routes';
+import { createLoreRouter } from './modules/lore/routes/lore.routes';
+import { createLeagueRouter } from './modules/leagues/routes/league.routes';
+import { createSocialRouter } from './modules/social/routes/social.routes';
+import { createCoopRouter } from './modules/coop/routes/coop.routes';
+import { createMarketRouter } from './modules/market/routes/market.routes';
 import { getDatabaseStatus } from './database/connection/mongoose';
 
 const app = express();
@@ -37,6 +42,11 @@ app.use('/api/v1/auth', createAuthRouter());
 app.use('/api/v1', createQuestsRouter());
 app.use('/api/v1', createBusinessRouter());
 app.use('/api/v1', createAnalyticsRouter());
+app.use('/api/v1', createLoreRouter());
+app.use('/api/v1', createLeagueRouter());
+app.use('/api/v1', createSocialRouter());
+app.use('/api/v1', createCoopRouter());
+app.use('/api/v1', createMarketRouter());
 app.use(errorHandler);
 
 export { app };

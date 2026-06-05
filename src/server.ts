@@ -2,6 +2,9 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { app } from './app';
 import { startRefreshTokenCleanupJob } from './jobs/refresh-token-cleanup.job';
+import { startLeagueWeeklyResetJob } from './jobs/league-weekly-reset.job';
+import { startDailyQuestCleanupJob } from './jobs/daily-quest-cleanup.job';
+import { startCouponExpiryJob } from './jobs/coupon-expiry.job';
 import { connectWithRetry, disconnectFromDatabase } from './database/connection/mongoose';
 
 /**
@@ -41,9 +44,11 @@ async function start(): Promise<void> {
   process.removeListener('SIGTERM', onSigterm);
   process.removeListener('SIGINT', onSigint);
 
-  // Job periodico di cleanup dei refresh token scaduti o revocati da molto tempo.
-  // Avviato dopo la connessione al DB per evitare errori sulla prima esecuzione.
+  // Job periodici avviati dopo la connessione al DB.
   const stopCleanupJob = startRefreshTokenCleanupJob();
+  const stopLeagueJob = startLeagueWeeklyResetJob();
+  const stopDailyQuestCleanupJob = startDailyQuestCleanupJob();
+  const stopCouponExpiryJob = startCouponExpiryJob();
 
   const server = app.listen(env.PORT, () => {
     logger.info(`Trentino Quest backend listening on port ${env.PORT} (${env.NODE_ENV})`);
@@ -61,6 +66,9 @@ async function start(): Promise<void> {
   const shutdown = (signal: string): void => {
     logger.info(`Ricevuto ${signal}, avvio shutdown ordinato`);
     stopCleanupJob();
+    stopLeagueJob();
+    stopDailyQuestCleanupJob();
+    stopCouponExpiryJob();
     server.close((err) => {
       if (err) {
         logger.error({ err }, 'Errore durante la chiusura del server HTTP');

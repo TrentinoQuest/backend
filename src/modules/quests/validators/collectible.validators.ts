@@ -13,12 +13,20 @@ export const collectibleIdParamSchema = z
 /**
  * Validator per la creazione di un collezionabile.
  */
+const coordinatesSchema = z
+  .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
+  .nullable()
+  .optional();
+
 export const createCollectibleSchema = z
   .object({
     name: z.string().trim().min(3).max(100),
     description: z.string().trim().min(1).max(500),
     imageUrl: z.url('URL immagine non valido'),
     rarity: z.enum(CollectibleRarity),
+    lore: z.string().trim().max(2000).nullable().optional(),
+    audioGuideUrl: z.url('URL audio non valido').nullable().optional(),
+    coordinates: coordinatesSchema,
   })
   .strict();
 
@@ -34,6 +42,9 @@ export const updateCollectibleSchema = z
     description: z.string().trim().min(1).max(500).optional(),
     imageUrl: z.url('URL immagine non valido').optional(),
     rarity: z.enum(CollectibleRarity).optional(),
+    lore: z.string().trim().max(2000).nullable().optional(),
+    audioGuideUrl: z.url('URL audio non valido').nullable().optional(),
+    coordinates: coordinatesSchema,
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {

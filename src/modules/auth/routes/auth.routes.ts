@@ -5,7 +5,10 @@ import {
   logoutHandler,
   refreshHandler,
   passwordRecoveryHandler,
+  deviceTokenHandler,
 } from '../controllers/auth.controller';
+import { authenticate, requireRole } from '../../../middleware/auth.middleware';
+import { UserRole } from '../../../database/models/User.model';
 
 /**
  * Crea il router con gli endpoint del modulo auth.
@@ -32,6 +35,7 @@ export function createAuthRouter(): Router {
   router.post('/refresh', refreshHandler);
   router.post('/logout', logoutHandler);
   router.post('/password-recovery', passwordRecoveryHandler);
+  router.post('/device-token', authenticate, requireRole(UserRole.PLAYER), deviceTokenHandler);
 
   return router;
 }
