@@ -14,8 +14,12 @@ import {
   CompletionEntry as ServiceCompletionEntry,
   CollectibleEntry as ServiceCollectibleEntry,
 } from '../services/player-profile.service';
-import { checkStreakLazy } from '../services/gamification.service';
-import { UnauthorizedError } from '../../../utils/errors';
+import { checkStreakLazy, StreakLazyResult } from '../services/gamification.service';
+import { getValleyProgress } from '../services/valley.service';
+import { getDailyQuests, completeDailyQuest } from '../services/daily-quest.service';
+import { UnauthorizedError, BadRequestError } from '../../../utils/errors';
+import { DailyQuestContext, DailyQuestType } from '../../../database/models/DailyQuest.model';
+import { z } from 'zod';
 import { IUser, IPlayer } from '../../../database/models/User.model';
 import {
   IQuest,
@@ -104,6 +108,14 @@ function serializeCollectible(collectible: ICollectible): CollectibleEntry['coll
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
     status: collectible.status,
+    lore: collectible.lore ?? null,
+    audioGuideUrl: collectible.audioGuideUrl ?? null,
+    coordinates: collectible.coordinates
+      ? {
+          lat: collectible.coordinates.coordinates[1],
+          lng: collectible.coordinates.coordinates[0],
+        }
+      : null,
   };
 }
 
@@ -136,8 +148,10 @@ export async function getPlayerMeHandler(
     if (!req.user) {
       throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     }
-    const player = await checkStreakLazy(String(req.user._id));
-    res.status(200).json(serializePlayer(player));
+    const { player, shieldConsumed, streakBroken }: StreakLazyResult = await checkStreakLazy(
+      String(req.user._id),
+    );
+    res.status(200).json({ ...serializePlayer(player), shieldConsumed, streakBroken });
   } catch (err) {
     next(err);
   }
@@ -212,6 +226,60 @@ export async function getPlayerProgressHandler(
       percentage: summary.percentage,
     };
     res.status(200).json(response);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getValleyProgressHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const data = await getValleyProgress(String(req.user._id));
+    res.status(200).json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const dailyQuestsQuerySchema = z.object({
+  context: z
+    .enum(['in_trentino', 'out_of_region'] as [string, ...string[]])
+    .default('in_trentino')
+    .transform((v) => v as DailyQuestContext),
+});
+
+export async function getDailyQuestsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const { context } = dailyQuestsQuerySchema.parse(req.query);
+    const data = await getDailyQuests(String(req.user._id), context);
+    res.status(200).json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function completeDailyQuestHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const questType = req.params.type as DailyQuestType;
+    if (!Object.values(DailyQuestType).includes(questType)) {
+      throw new BadRequestError('Tipo missione non valido', 'INVALID_QUEST_TYPE');
+    }
+    const result = await completeDailyQuest(String(req.user._id), questType);
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }

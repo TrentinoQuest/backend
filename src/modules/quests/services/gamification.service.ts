@@ -1,6 +1,7 @@
 import { GamificationResult } from '@trentino-quest/shared-types';
 import { Player, IPlayer } from '../../../database/models/User.model';
 import { QuestType } from '../../../database/models/Quest.model';
+import { LeagueMembership, LeagueSeason } from '../../../database/models/League.model';
 import { NotFoundError } from '../../../utils/errors';
 import {
   computeStreakUpdate,
@@ -53,9 +54,12 @@ export async function applyGamification(
     player.longestStreak = player.currentStreak;
   }
 
-  // Passo 5: XP e livello
+  // Passo 5: XP, livello e monete
   const multiplier = computeStreakMultiplier(player.currentStreak);
   const xpAwarded = computeXpAwarded(questType, player.currentStreak);
+  const coinsAwarded = Math.round(
+    questType === QuestType.PRIMARY ? 25 * multiplier : 10 * multiplier,
+  );
   const prevLevel = computeLevelFromXp(player.xp);
   player.xp += xpAwarded;
   const newLevelData = computeLevelFromXp(player.xp);
@@ -69,7 +73,7 @@ export async function applyGamification(
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   player.lastQuestDate = todayDate;
 
-  // Passo 8: update atomico (solo i campi di gamification, non tocca totalPoints)
+  // Passo 8: update atomico (gamification + coins)
   await Player.findByIdAndUpdate(playerId, {
     xp: player.xp,
     level: newLevelData.level,
@@ -77,10 +81,25 @@ export async function applyGamification(
     longestStreak: player.longestStreak,
     lastQuestDate: player.lastQuestDate,
     streakShieldActive: player.streakShieldActive,
+    $inc: { coins: coinsAwarded },
   });
+
+  // Aggiorna weeklyXp nella lega corrente (fire-and-forget)
+  try {
+    const activeSeason = await LeagueSeason.findOne({ active: true });
+    if (activeSeason) {
+      await LeagueMembership.updateOne(
+        { playerId, seasonId: activeSeason._id },
+        { $inc: { weeklyXp: xpAwarded } },
+      );
+    }
+  } catch {
+    // non bloccare la risposta se la lega non è configurata
+  }
 
   return {
     xpAwarded,
+    coinsAwarded,
     streakMultiplier: multiplier,
     currentStreak: player.currentStreak,
     longestStreak: player.longestStreak,
@@ -93,13 +112,20 @@ export async function applyGamification(
   };
 }
 
+export interface StreakLazyResult {
+  player: IPlayer;
+  shieldConsumed: boolean;
+  streakBroken: boolean;
+}
+
 /**
  * Verifica lazy della streak al GET /player/me.
  *
  * Aggiorna il DB SOLO se necessario (shield consumato o streak azzerata),
  * non scrive a ogni lettura del profilo.
+ * Ritorna il player aggiornato piu' i flag informativi per la response.
  */
-export async function checkStreakLazy(playerId: string): Promise<IPlayer> {
+export async function checkStreakLazy(playerId: string): Promise<StreakLazyResult> {
   const player = await Player.findById(playerId);
   if (!player) {
     throw new NotFoundError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
@@ -108,7 +134,7 @@ export async function checkStreakLazy(playerId: string): Promise<IPlayer> {
   const update = computeStreakUpdate(player.lastQuestDate, player.streakShieldActive, new Date());
 
   if (!update.shieldConsumed && !update.streakBroken) {
-    return player;
+    return { player, shieldConsumed: false, streakBroken: false };
   }
 
   const changes: Record<string, unknown> = {};
@@ -116,5 +142,9 @@ export async function checkStreakLazy(playerId: string): Promise<IPlayer> {
   if (update.streakBroken) changes.currentStreak = 0;
 
   const updated = await Player.findByIdAndUpdate(playerId, changes, { new: true });
-  return updated ?? player;
+  return {
+    player: updated ?? player,
+    shieldConsumed: update.shieldConsumed,
+    streakBroken: update.streakBroken,
+  };
 }

@@ -12,7 +12,14 @@ import {
   listPlayerCompletionsHandler,
   getPlayerCollectionHandler,
   getPlayerProgressHandler,
+  getValleyProgressHandler,
+  getDailyQuestsHandler,
+  completeDailyQuestHandler,
 } from '../controllers/player-profile.controller';
+import {
+  setPlayerClassHandler,
+  completeOnboardingHandler,
+} from '../../auth/controllers/auth.controller';
 import {
   listAdminQuestsHandler,
   getAdminQuestByIdHandler,
@@ -80,6 +87,36 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.PLAYER),
     getPlayerProgressHandler,
+  );
+  router.get(
+    '/player/valley-progress',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    getValleyProgressHandler,
+  );
+  router.get(
+    '/player/daily-quests',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    getDailyQuestsHandler,
+  );
+  router.post(
+    '/player/daily-quests/:type/complete',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    completeDailyQuestHandler,
+  );
+  router.patch(
+    '/player/me/class',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    setPlayerClassHandler,
+  );
+  router.post(
+    '/onboarding/complete',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    completeOnboardingHandler,
   );
 
   // IQuestAdmin - tutte riservate agli amministratori

@@ -25,8 +25,8 @@ export const registerPlayerSchema = z
       .min(3, 'Lo username deve contenere almeno 3 caratteri')
       .max(30, 'Lo username non può superare 30 caratteri')
       .regex(/^[A-Za-z0-9_]+$/, 'Lo username può contenere solo lettere, numeri e underscore'),
+    playerClass: z.enum(['castle_hunter', 'forest_keeper', 'urban_explorer']).optional().nullable(),
   })
-  .strict()
   .refine((data) => data.username.toLowerCase() !== data.password.toLowerCase(), {
     message: 'Username e password non possono coincidere',
     path: ['password'],
@@ -38,6 +38,9 @@ export const registerPlayerSchema = z
  * dichiarazioni manuali ridondanti.
  */
 export type RegisterPlayerInput = z.infer<typeof registerPlayerSchema>;
+
+export const deviceTokenSchema = z.object({ fcmToken: z.string().min(1) }).strict();
+export type DeviceTokenInput = z.infer<typeof deviceTokenSchema>;
 
 /**
  * Validator zod per la richiesta di login.

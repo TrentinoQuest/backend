@@ -30,6 +30,8 @@ export interface IUser extends Document {
  * Aggiunge gli attributi specifici della classe Giocatore del D2
  * e i campi di gamification (XP, livelli, streak, shield).
  */
+export type PlayerClass = 'castle_hunter' | 'forest_keeper' | 'urban_explorer';
+
 export interface IPlayer extends IUser {
   username: string;
   totalPoints: number;
@@ -40,6 +42,11 @@ export interface IPlayer extends IUser {
   longestStreak: number;
   lastQuestDate: Date | null;
   streakShieldActive: boolean;
+  coins: number;
+  playerClass: PlayerClass | null;
+  fcmToken: string | null;
+  onboardingCompleted: boolean;
+  currentLeagueTier: string;
 }
 
 /**
@@ -169,6 +176,15 @@ const playerSchema = new Schema<IPlayer>({
   longestStreak: { type: Number, default: 0, min: 0 },
   lastQuestDate: { type: Date, default: null },
   streakShieldActive: { type: Boolean, default: false },
+  coins: { type: Number, default: 0, min: 0 },
+  playerClass: {
+    type: String,
+    enum: ['castle_hunter', 'forest_keeper', 'urban_explorer', null],
+    default: null,
+  },
+  fcmToken: { type: String, default: null },
+  onboardingCompleted: { type: Boolean, default: false },
+  currentLeagueTier: { type: String, default: 'porfido' },
 });
 
 /**

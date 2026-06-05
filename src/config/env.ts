@@ -16,6 +16,13 @@ const envSchema = z.object({
 
   GEO_MAX_ACCURACY_METERS: z.coerce.number().positive().max(10000).default(100),
   GEO_MAX_FIX_AGE_SECONDS: z.coerce.number().positive().max(3600).default(60),
+
+  FIREBASE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true')
+    .default(false),
+  FIREBASE_SERVICE_ACCOUNT_KEY_PATH: z.string().default('./firebase-service-account.json'),
 });
 
 const parsed = envSchema.safeParse(process.env);
