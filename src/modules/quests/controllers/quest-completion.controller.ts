@@ -170,6 +170,7 @@ export async function checkInHandler(
       pointsAwarded: result.pointsAwarded,
       totalPoints: result.totalPoints,
       distanceFromTargetMeters: result.distanceFromTargetMeters,
+      gamification: result.gamification,
     };
     res.status(201).json(response);
   } catch (err) {
@@ -207,6 +208,7 @@ export async function scanQrHandler(
       totalPoints: result.totalPoints,
       collectible: serializeCollectible(result.collectible),
       distanceFromTargetMeters: result.distanceFromTargetMeters,
+      gamification: result.gamification,
     };
     res.status(201).json(response);
   } catch (err) {

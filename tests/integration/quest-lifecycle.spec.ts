@@ -173,6 +173,19 @@ describe('Quest check-in (player)', () => {
     expect(checkInRes.status).toBe(201);
     expect(checkInRes.body.pointsAwarded).toBe(50);
     expect(checkInRes.body.totalPoints).toBe(50);
+
+    // Verifica il campo gamification nella response
+    const { gamification } = checkInRes.body;
+    expect(gamification).toBeDefined();
+    expect(gamification.xpAwarded).toBe(50); // 50 XP base, streak=1, moltiplicatore 1.0
+    expect(gamification.streakMultiplier).toBe(1.0);
+    expect(gamification.currentStreak).toBe(1);
+    expect(gamification.totalXp).toBe(50);
+    expect(gamification.levelTitle).toBe('Visitatore');
+    expect(gamification.newLevel).toBeNull(); // nessun level up al primo completamento
+    expect(gamification.shieldEarned).toBe(false);
+    expect(gamification.shieldConsumed).toBe(false);
+    expect(gamification.streakBroken).toBe(false);
   });
 
   it('rejects check-in when player is too far from the quest', async () => {

@@ -1,7 +1,13 @@
 import { Types } from 'mongoose';
+import { GamificationResult } from '@trentino-quest/shared-types';
 import { ConflictError, NotFoundError } from '../../../utils/errors';
 import { logger } from '../../../config/logger';
-import { IQuest, IPrimaryQuest, ISecondaryQuest } from '../../../database/models/Quest.model';
+import {
+  IQuest,
+  IPrimaryQuest,
+  ISecondaryQuest,
+  QuestType,
+} from '../../../database/models/Quest.model';
 import { ICollectible } from '../../../database/models/Collectible.model';
 import { ICompletion } from '../../../database/models/Completion.model';
 import { IUser } from '../../../database/models/User.model';
@@ -23,6 +29,7 @@ import {
   haversineDistanceMeters,
   validateGeoFix,
 } from '../utils/geo.utils';
+import { applyGamification } from './gamification.service';
 
 /**
  * Service del modulo quests, parte relativa alle operazioni sulle quest:
@@ -41,6 +48,7 @@ export interface CheckInResult {
   pointsAwarded: number;
   totalPoints: number;
   distanceFromTargetMeters: number;
+  gamification: GamificationResult;
 }
 
 /**
@@ -144,12 +152,14 @@ export async function checkIn(
   });
 
   const totalPoints = await addPointsToPlayer(playerId, pointsAwarded);
+  const gamification = await applyGamification(String(playerId), QuestType.SECONDARY);
 
   logger.info(
     {
       playerId: String(playerId),
       questId: String(quest._id),
       pointsAwarded,
+      xpAwarded: gamification.xpAwarded,
       distance: Math.round(distance),
       hasFix: fix !== undefined,
     },
@@ -161,6 +171,7 @@ export async function checkIn(
     pointsAwarded,
     totalPoints,
     distanceFromTargetMeters: Math.round(distance),
+    gamification,
   };
 }
 
@@ -245,12 +256,14 @@ export async function scanQr(
   });
 
   const totalPoints = await addPointsToPlayer(playerId, pointsAwarded);
+  const gamification = await applyGamification(String(playerId), QuestType.PRIMARY);
 
   logger.info(
     {
       playerId: String(playerId),
       questId: String(questByToken._id),
       pointsAwarded,
+      xpAwarded: gamification.xpAwarded,
       collectibleId: String(collectible._id),
       distance: Math.round(distance),
       hasFix: fix !== undefined,
@@ -264,6 +277,7 @@ export async function scanQr(
     totalPoints,
     collectible,
     distanceFromTargetMeters: Math.round(distance),
+    gamification,
   };
 }
 
