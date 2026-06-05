@@ -8,6 +8,7 @@ import { createOpenApiValidator } from './middleware/openapi-validator';
 import { createAuthRouter } from './modules/auth/routes/auth.routes';
 import { createQuestsRouter } from './modules/quests/routes/quests.routes';
 import { createBusinessRouter } from './modules/business/routes/business.routes';
+import { createAnalyticsRouter } from './modules/analytics/routes/analytics.routes';
 import { getDatabaseStatus } from './database/connection/mongoose';
 
 const app = express();
@@ -35,6 +36,7 @@ app.use(createOpenApiValidator());
 app.use('/api/v1/auth', createAuthRouter());
 app.use('/api/v1', createQuestsRouter());
 app.use('/api/v1', createBusinessRouter());
+app.use('/api/v1', createAnalyticsRouter());
 app.use(errorHandler);
 
 export { app };
