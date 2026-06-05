@@ -1427,9 +1427,11 @@ components:
         alreadyAnswered:
           type: boolean
         result:
-          $ref: '#/components/schemas/LoreAnswerResult'
+          type: object
           nullable: true
           description: Presente solo se alreadyAnswered = true
+          allOf:
+            - $ref: '#/components/schemas/LoreAnswerResult'
 
     MapFragment:
       type: object
@@ -1458,8 +1460,10 @@ components:
           minimum: 0
           description: 50 se corretto, 0 se errato
         mapFragment:
-          $ref: '#/components/schemas/MapFragment'
+          type: object
           nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MapFragment'
 
     # ── Modulo 7 — Leghe ─────────────────────────────────────────────────────
     LeagueLeaderboardEntry:
