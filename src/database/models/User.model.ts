@@ -18,7 +18,7 @@ const BCRYPT_SALT_ROUNDS = 12;
  */
 export interface IUser extends Document {
   email: string;
-  password: string;
+  password: string | null;
   role: UserRole;
   createdAt: Date;
   updatedAt: Date;
@@ -44,6 +44,8 @@ export interface IPlayer extends IUser {
   fcmToken: string | null;
   onboardingCompleted: boolean;
   currentLeagueTier: string;
+  oauthProvider: 'google' | 'apple' | null;
+  oauthId: string | null;
 }
 
 /**
@@ -94,7 +96,8 @@ const userSchema = new Schema<IUser>(
     },
     password: {
       type: String,
-      required: [true, 'Password obbligatoria'],
+      required: false,
+      default: null,
       minlength: [8, 'La password deve contenere almeno 8 caratteri'],
     },
     role: {
@@ -120,7 +123,7 @@ const userSchema = new Schema<IUser>(
  * successivo quando la promise risolve.
  */
 userSchema.pre<IUser>('save', async function hashPassword() {
-  if (!this.isModified('password')) {
+  if (!this.isModified('password') || !this.password) {
     return;
   }
   this.password = await bcrypt.hash(this.password, BCRYPT_SALT_ROUNDS);
@@ -134,6 +137,7 @@ userSchema.methods.comparePassword = async function comparePassword(
   this: IUser,
   candidatePassword: string,
 ): Promise<boolean> {
+  if (!this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
 };
 
@@ -177,6 +181,8 @@ const playerSchema = new Schema<IPlayer>({
   fcmToken: { type: String, default: null },
   onboardingCompleted: { type: Boolean, default: false },
   currentLeagueTier: { type: String, default: 'porfido' },
+  oauthProvider: { type: String, enum: ['google', 'apple'], default: null },
+  oauthId: { type: String, default: null },
 });
 
 /**
@@ -196,6 +202,8 @@ const adminSchema = new Schema<IAdmin>({
     trim: true,
   },
 });
+
+playerSchema.index({ oauthProvider: 1, oauthId: 1 }, { sparse: true });
 
 /**
  * Discriminator per il ruolo Giocatore.
