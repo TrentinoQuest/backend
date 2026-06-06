@@ -31,7 +31,7 @@ info:
     TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
     token. La rotation dei refresh token e' attiva: ogni chiamata a
     /auth/refresh emette un nuovo refresh token e revoca quello precedente.
-  version: 0.8.0
+  version: 0.9.0
   contact:
     name: Gruppo 19 - Trentino Quest
 servers:
@@ -267,6 +267,11 @@ components:
               description: Il player ha completato l'onboarding
             currentLeagueTier:
               $ref: '#/components/schemas/LeagueTier'
+            oauthProvider:
+              type: string
+              nullable: true
+              enum: [google, apple, null]
+              description: Provider OAuth usato per la registrazione, null se email+password
     Admin:
       allOf:
         - $ref: '#/components/schemas/User'
@@ -1441,7 +1446,7 @@ components:
     # ── Modulo 7 — Leghe ─────────────────────────────────────────────────────
     LeagueLeaderboardEntry:
       type: object
-      required: [rank, playerId, username, weeklyXp, isCurrentPlayer]
+      required: [rank, playerId, username, weeklyXp, isCurrentPlayer, isFriend]
       properties:
         rank:
           type: integer
@@ -1455,6 +1460,9 @@ components:
           minimum: 0
         isCurrentPlayer:
           type: boolean
+        isFriend:
+          type: boolean
+          description: True se il player è nella lista amici accepted del richiedente
 
     LeagueCurrentView:
       type: object
@@ -1564,18 +1572,44 @@ components:
           type: boolean
           description: Il player autenticato ha gia inviato kudos per questa attivita
 
-    FriendSuggestion:
+    SocialLeaderboardEntry:
       type: object
-      required: [playerId, username, commonCollectibles]
+      required: [rank, playerId, username, socialScore, questCompletions, isCurrentPlayer]
       properties:
+        rank:
+          type: integer
+          minimum: 1
         playerId:
           type: string
         username:
           type: string
-        commonCollectibles:
+        socialScore:
           type: integer
           minimum: 0
-          description: Numero di collezionabili sbloccati in comune
+          description: Completamenti ponderati (primary × 2, secondary × 1)
+        questCompletions:
+          type: integer
+          minimum: 0
+        isCurrentPlayer:
+          type: boolean
+
+    ProximityZone:
+      type: string
+      enum: [outside_area, cold, warm, hot, burning]
+      description: |
+        Zona di prossimità categorica. Mai rivela la distanza in metri.
+        - outside_area: fuori dalla searchArea
+        - cold: dentro searchArea, distanza > 60% del raggio
+        - warm: distanza 30-60% del raggio
+        - hot: distanza 10-30% del raggio
+        - burning: distanza < 10% del raggio (QR a portata)
+
+    ProximityResponse:
+      type: object
+      required: [zone]
+      properties:
+        zone:
+          $ref: '#/components/schemas/ProximityZone'
 
     # ── Modulo 10 — Coop ─────────────────────────────────────────────────────
     CoopChallengeView:
@@ -1891,6 +1925,43 @@ paths:
             un link di recupero.
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /auth/oauth/google:
+    post:
+      tags: [auth]
+      summary: Login/registrazione tramite Google OAuth
+      description: |
+        Il client mobile ottiene un idToken da Google SDK (Capacitor) e lo invia
+        al backend. Il backend verifica il token, crea o recupera il Player,
+        e restituisce la coppia access+refresh token.
+        In sviluppo locale con SKIP_OAUTH_VERIFICATION=true si può usare un
+        JWT firmato con qualsiasi segreto purché contenga email e sub.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: ID token ottenuto da Google SDK
+      responses:
+        '200':
+          description: Login/registrazione riuscita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Token non valido o GOOGLE_CLIENT_ID non configurato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /quests:
     get:
       tags: [quest-completion]
@@ -2044,6 +2115,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /quests/{id}/proximity:
+    get:
+      tags: [quest-completion]
+      summary: Feedback di prossimità al QR
+      description: |
+        Restituisce una zona categorica che indica quanto il giocatore è vicino
+        al QR fisico della quest, senza mai rivelare coordinate esatte o distanza
+        in metri. Utilizzato per il radar di ricerca.
+        Solo per quest di tipo primary attive.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+          description: Latitudine del giocatore
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+          description: Longitudine del giocatore
+      responses:
+        '200':
+          description: Zona di prossimità calcolata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProximityResponse'
+        '400':
+          description: Quest non è di tipo primary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quest non trovata o non attiva
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /player/me:
     get:
       tags: [player-profile]
@@ -3350,26 +3469,191 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /social/suggestions:
+  /social/leaderboard:
     get:
       tags: [social]
-      summary: Suggerimenti amici
+      summary: Classifica tra amici
       description: |
-        Player non ancora in amicizia, ordinati per numero di collezionabili
-        sbloccati in comune. Esclude player gia in friendships (qualsiasi stato).
-      parameters:
-        - name: limit
-          in: query
-          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+        Restituisce la classifica del player corrente e dei suoi amici (accepted).
+        socialScore = completamenti_primary × 2 + completamenti_secondary × 1.
+        Ordinata per socialScore decrescente.
+      security:
+        - BearerAuth: []
       responses:
         '200':
-          description: Suggerimenti
+          description: Classifica sociale
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/FriendSuggestion'
+                  $ref: '#/components/schemas/SocialLeaderboardEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends:
+    get:
+      tags: [social]
+      summary: Lista amici
+      description: Amicizie in stato accepted del player autenticato.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Lista amici
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [friendshipId, playerId, username]
+                  properties:
+                    friendshipId: { type: string }
+                    playerId: { type: string }
+                    username: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/request:
+    post:
+      tags: [social]
+      summary: Invia richiesta di amicizia
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipientId]
+              properties:
+                recipientId: { type: string }
+      responses:
+        '201':
+          description: Richiesta inviata
+        '400':
+          description: Auto-amicizia o errore validazione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Amicizia già esistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/requests:
+    get:
+      tags: [social]
+      summary: Richieste di amicizia ricevute
+      description: Richieste pending ricevute dal player autenticato.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Richieste pending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [friendshipId, requesterId, username, createdAt]
+                  properties:
+                    friendshipId: { type: string }
+                    requesterId: { type: string }
+                    username: { type: string }
+                    createdAt: { type: string, format: date-time }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/{id}/accept:
+    post:
+      tags: [social]
+      summary: Accetta richiesta di amicizia
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: ID del documento Friendship
+      responses:
+        '200':
+          description: Amicizia accettata
+        '403':
+          description: Non sei il destinatario della richiesta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Richiesta non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/{id}/reject:
+    post:
+      tags: [social]
+      summary: Rifiuta richiesta di amicizia
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: ID del documento Friendship
+      responses:
+        '200':
+          description: Richiesta rifiutata
+        '403':
+          description: Non sei il destinatario della richiesta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Richiesta non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/{id}:
+    delete:
+      tags: [social]
+      summary: Rimuovi amico
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: ID del documento Friendship
+      responses:
+        '200':
+          description: Amico rimosso
+        '404':
+          description: Amicizia non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
