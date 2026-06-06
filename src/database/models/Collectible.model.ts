@@ -38,7 +38,6 @@ export interface ICollectible extends Document {
   updatedAt: Date;
   status: CollectibleStatus;
   lore: string | null;
-  audioGuideUrl: string | null;
   coordinates: { type: 'Point'; coordinates: [number, number] } | null;
 }
 
@@ -74,7 +73,6 @@ const collectibleSchema = new Schema<ICollectible>(
       default: CollectibleStatus.ACTIVE,
     },
     lore: { type: String, default: null },
-    audioGuideUrl: { type: String, default: null },
     coordinates: { type: Schema.Types.Mixed, default: null },
   },
   {

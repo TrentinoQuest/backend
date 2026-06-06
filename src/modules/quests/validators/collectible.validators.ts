@@ -25,7 +25,6 @@ export const createCollectibleSchema = z
     imageUrl: z.url('URL immagine non valido'),
     rarity: z.enum(CollectibleRarity),
     lore: z.string().trim().max(2000).nullable().optional(),
-    audioGuideUrl: z.url('URL audio non valido').nullable().optional(),
     coordinates: coordinatesSchema,
   })
   .strict();
@@ -43,7 +42,6 @@ export const updateCollectibleSchema = z
     imageUrl: z.url('URL immagine non valido').optional(),
     rarity: z.enum(CollectibleRarity).optional(),
     lore: z.string().trim().max(2000).nullable().optional(),
-    audioGuideUrl: z.url('URL audio non valido').nullable().optional(),
     coordinates: coordinatesSchema,
   })
   .strict()

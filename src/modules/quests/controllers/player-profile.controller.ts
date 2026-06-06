@@ -109,7 +109,6 @@ function serializeCollectible(collectible: ICollectible): CollectibleEntry['coll
     createdAt: collectible.createdAt.toISOString(),
     status: collectible.status,
     lore: collectible.lore ?? null,
-    audioGuideUrl: collectible.audioGuideUrl ?? null,
     coordinates: collectible.coordinates
       ? {
           lat: collectible.coordinates.coordinates[1],

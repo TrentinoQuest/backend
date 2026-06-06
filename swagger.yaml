@@ -262,11 +262,6 @@ components:
               type: integer
               minimum: 0
               description: Valuta spendibile nel mercato coupon
-            playerClass:
-              type: string
-              enum: [castle_hunter, forest_explorer, urban_explorer]
-              nullable: true
-              description: Classe identitaria scelta nell'onboarding
             onboardingCompleted:
               type: boolean
               description: Il player ha completato l'onboarding
@@ -297,10 +292,6 @@ components:
           type: string
           minLength: 3
           maxLength: 30
-        playerClass:
-          type: string
-          enum: [castle_hunter, forest_explorer, urban_explorer]
-          description: Classe identitaria opzionale (impostabile anche in seguito tramite onboarding)
     LoginRequest:
       type: object
       required: [email, password]
@@ -425,10 +416,6 @@ components:
         lore:
           type: string
           nullable: true
-        audioGuideUrl:
-          type: string
-          format: uri
-          nullable: true
         coordinates:
           type: object
           nullable: true
@@ -454,10 +441,6 @@ components:
           $ref: '#/components/schemas/CollectibleRarity'
         lore:
           type: string
-          nullable: true
-        audioGuideUrl:
-          type: string
-          format: uri
           nullable: true
         coordinates:
           type: object
@@ -557,11 +540,6 @@ components:
           type: string
           nullable: true
           description: Testo narrativo per il retro della card del taccuino
-        audioGuideUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: URL file audio micro-audioguida (max 60s)
         coordinates:
           type: object
           nullable: true
@@ -1283,11 +1261,6 @@ components:
           minimum: 0
 
     # ── Enums nuovi moduli ────────────────────────────────────────────────────
-    PlayerClass:
-      type: string
-      enum: [castle_hunter, forest_explorer, urban_explorer]
-      description: Classe identitaria del giocatore scelta nell'onboarding.
-
     LeagueTier:
       type: string
       enum: [porfido, marmo, arenaria, granito, dolomiti]
@@ -3098,41 +3071,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   # ── Modulo 2 — Onboarding ─────────────────────────────────────────────────
-  /player/me/class:
-    patch:
-      tags: [player-profile]
-      summary: Imposta la classe del giocatore (onboarding)
-      description: |
-        Imposta la classe identitaria del giocatore. Puo essere impostata
-        una sola volta; una seconda chiamata restituisce 409 CLASS_ALREADY_SET.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [playerClass]
-              properties:
-                playerClass:
-                  $ref: '#/components/schemas/PlayerClass'
-      responses:
-        '200':
-          description: Classe impostata
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Player'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
-          description: Classe gia impostata (CLASS_ALREADY_SET)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /onboarding/complete:
     post:
       tags: [player-profile]
@@ -3141,16 +3079,6 @@ paths:
         Segna l'onboarding come completato e assegna +100 XP e +50 monete
         (l'Amuleto del Viandante). Idempotente: se gia completato risponde
         200 senza riassegnare premi.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [playerClass]
-              properties:
-                playerClass:
-                  $ref: '#/components/schemas/PlayerClass'
       responses:
         '200':
           description: Onboarding completato (o gia completato in precedenza)

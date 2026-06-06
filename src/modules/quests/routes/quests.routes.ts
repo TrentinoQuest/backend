@@ -16,10 +16,7 @@ import {
   getDailyQuestsHandler,
   completeDailyQuestHandler,
 } from '../controllers/player-profile.controller';
-import {
-  setPlayerClassHandler,
-  completeOnboardingHandler,
-} from '../../auth/controllers/auth.controller';
+import { completeOnboardingHandler } from '../../auth/controllers/auth.controller';
 import {
   listAdminQuestsHandler,
   getAdminQuestByIdHandler,
@@ -105,12 +102,6 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.PLAYER),
     completeDailyQuestHandler,
-  );
-  router.patch(
-    '/player/me/class',
-    authenticate,
-    requireRole(UserRole.PLAYER),
-    setPlayerClassHandler,
   );
   router.post(
     '/onboarding/complete',
