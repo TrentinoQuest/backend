@@ -16,10 +16,7 @@ import {
   getDailyQuestsHandler,
   completeDailyQuestHandler,
 } from '../controllers/player-profile.controller';
-import {
-  setPlayerClassHandler,
-  completeOnboardingHandler,
-} from '../../auth/controllers/auth.controller';
+import { completeOnboardingHandler } from '../../auth/controllers/auth.controller';
 import {
   listAdminQuestsHandler,
   getAdminQuestByIdHandler,
@@ -36,6 +33,7 @@ import {
   updatePositionHandler,
   reportIssueHandler,
 } from '../controllers/operator.controller';
+import { proximityHandler } from '../controllers/quest-proximity.controller';
 import {
   listAdminCollectiblesHandler,
   getAdminCollectibleHandler,
@@ -67,6 +65,7 @@ export function createQuestsRouter(): Router {
   // IQuestCompletion - completamento riservato ai giocatori
   router.post('/quests/:id/check-in', authenticate, requireRole(UserRole.PLAYER), checkInHandler);
   router.post('/quests/:id/scan', authenticate, requireRole(UserRole.PLAYER), scanQrHandler);
+  router.get('/quests/:id/proximity', authenticate, requireRole(UserRole.PLAYER), proximityHandler);
 
   // IPlayerProfile - riservata ai giocatori
   router.get('/player/me', authenticate, requireRole(UserRole.PLAYER), getPlayerMeHandler);
@@ -105,12 +104,6 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.PLAYER),
     completeDailyQuestHandler,
-  );
-  router.patch(
-    '/player/me/class',
-    authenticate,
-    requireRole(UserRole.PLAYER),
-    setPlayerClassHandler,
   );
   router.post(
     '/onboarding/complete',

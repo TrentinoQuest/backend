@@ -18,7 +18,7 @@ const BCRYPT_SALT_ROUNDS = 12;
  */
 export interface IUser extends Document {
   email: string;
-  password: string;
+  password: string | null;
   role: UserRole;
   createdAt: Date;
   updatedAt: Date;
@@ -30,8 +30,6 @@ export interface IUser extends Document {
  * Aggiunge gli attributi specifici della classe Giocatore del D2
  * e i campi di gamification (XP, livelli, streak, shield).
  */
-export type PlayerClass = 'castle_hunter' | 'forest_keeper' | 'urban_explorer';
-
 export interface IPlayer extends IUser {
   username: string;
   totalPoints: number;
@@ -43,10 +41,11 @@ export interface IPlayer extends IUser {
   lastQuestDate: Date | null;
   streakShieldActive: boolean;
   coins: number;
-  playerClass: PlayerClass | null;
   fcmToken: string | null;
   onboardingCompleted: boolean;
   currentLeagueTier: string;
+  oauthProvider: 'google' | 'apple' | null;
+  oauthId: string | null;
 }
 
 /**
@@ -97,7 +96,8 @@ const userSchema = new Schema<IUser>(
     },
     password: {
       type: String,
-      required: [true, 'Password obbligatoria'],
+      required: false,
+      default: null,
       minlength: [8, 'La password deve contenere almeno 8 caratteri'],
     },
     role: {
@@ -123,7 +123,7 @@ const userSchema = new Schema<IUser>(
  * successivo quando la promise risolve.
  */
 userSchema.pre<IUser>('save', async function hashPassword() {
-  if (!this.isModified('password')) {
+  if (!this.isModified('password') || !this.password) {
     return;
   }
   this.password = await bcrypt.hash(this.password, BCRYPT_SALT_ROUNDS);
@@ -137,6 +137,7 @@ userSchema.methods.comparePassword = async function comparePassword(
   this: IUser,
   candidatePassword: string,
 ): Promise<boolean> {
+  if (!this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
 };
 
@@ -177,14 +178,11 @@ const playerSchema = new Schema<IPlayer>({
   lastQuestDate: { type: Date, default: null },
   streakShieldActive: { type: Boolean, default: false },
   coins: { type: Number, default: 0, min: 0 },
-  playerClass: {
-    type: String,
-    enum: ['castle_hunter', 'forest_keeper', 'urban_explorer', null],
-    default: null,
-  },
   fcmToken: { type: String, default: null },
   onboardingCompleted: { type: Boolean, default: false },
   currentLeagueTier: { type: String, default: 'porfido' },
+  oauthProvider: { type: String, enum: ['google', 'apple'], default: null },
+  oauthId: { type: String, default: null },
 });
 
 /**
@@ -204,6 +202,8 @@ const adminSchema = new Schema<IAdmin>({
     trim: true,
   },
 });
+
+playerSchema.index({ oauthProvider: 1, oauthId: 1 }, { sparse: true });
 
 /**
  * Discriminator per il ruolo Giocatore.

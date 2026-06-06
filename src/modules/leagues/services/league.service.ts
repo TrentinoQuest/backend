@@ -7,6 +7,7 @@ import {
   TIER_ORDER,
 } from '../../../database/models/League.model';
 import { Player } from '../../../database/models/User.model';
+import { Friendship } from '../../../database/models/Friendship.model';
 import { NotFoundError } from '../../../utils/errors';
 import { LeagueCurrentView, LeagueHistoryEntry } from '@trentino-quest/shared-types';
 
@@ -150,14 +151,28 @@ export async function getLeagueCurrent(playerId: string): Promise<LeagueCurrentV
 
   groupMembers.sort((a, b) => b.weeklyXp - a.weeklyXp);
 
+  const friendships = await Friendship.find({
+    $or: [
+      { requesterId: playerId, status: 'accepted' },
+      { recipientId: playerId, status: 'accepted' },
+    ],
+  });
+  const friendIds = new Set(
+    friendships.map((f) =>
+      String(f.requesterId) === playerId ? String(f.recipientId) : String(f.requesterId),
+    ),
+  );
+
   const leaderboard = groupMembers.map((m, i) => {
     const player = m.playerId as unknown as { _id: unknown; username: string };
+    const pid = String(player._id);
     return {
       rank: i + 1,
-      playerId: String(player._id),
+      playerId: pid,
       username: player.username,
       weeklyXp: m.weeklyXp,
-      isCurrentPlayer: String(player._id) === playerId,
+      isCurrentPlayer: pid === playerId,
+      isFriend: friendIds.has(pid),
     };
   });
 

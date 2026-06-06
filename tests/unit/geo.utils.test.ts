@@ -5,6 +5,7 @@ import {
   geoJsonToGeoPoint,
   validateGeoFix,
 } from '../../src/modules/quests/utils/geo.utils';
+import { computeProximityZone } from '../../src/modules/quests/controllers/quest-proximity.controller';
 
 describe('haversineDistanceMeters', () => {
   it('returns 0 for identical points', () => {
@@ -41,6 +42,58 @@ describe('geoPointToGeoJson / geoJsonToGeoPoint', () => {
     const back = geoJsonToGeoPoint(geoJson);
     expect(back.lat).toBeCloseTo(original.lat, 10);
     expect(back.lng).toBeCloseTo(original.lng, 10);
+  });
+});
+
+describe('computeProximityZone', () => {
+  const radius = 100;
+
+  it('restituisce outside_area se la distanza supera il raggio', () => {
+    expect(computeProximityZone(101, radius)).toBe('outside_area');
+  });
+
+  it('restituisce outside_area esattamente al confine (> raggio)', () => {
+    expect(computeProximityZone(100.1, radius)).toBe('outside_area');
+  });
+
+  // distanza > 60% → cold; esattamente al 60% cade in warm (la soglia è >)
+  it('restituisce cold per distanza strettamente > 60% del raggio', () => {
+    expect(computeProximityZone(61, radius)).toBe('cold');
+  });
+
+  it('restituisce cold tra 60% e 100% del raggio', () => {
+    expect(computeProximityZone(80, radius)).toBe('cold');
+  });
+
+  // al 60% esatto: ratio = 0.6, NON > 0.6 → warm
+  it('restituisce warm al confine inferiore di cold (60%)', () => {
+    expect(computeProximityZone(60, radius)).toBe('warm');
+  });
+
+  it('restituisce warm tra 30% e 60% del raggio', () => {
+    expect(computeProximityZone(45, radius)).toBe('warm');
+  });
+
+  // al 30% esatto: ratio = 0.3, NON > 0.3 → hot
+  it('restituisce hot al confine inferiore di warm (30%)', () => {
+    expect(computeProximityZone(30, radius)).toBe('hot');
+  });
+
+  it('restituisce hot tra 10% e 30% del raggio', () => {
+    expect(computeProximityZone(20, radius)).toBe('hot');
+  });
+
+  // al 10% esatto: ratio = 0.1, NON > 0.1 → burning
+  it('restituisce burning al confine inferiore di hot (10%)', () => {
+    expect(computeProximityZone(10, radius)).toBe('burning');
+  });
+
+  it('restituisce burning sotto il 10% del raggio', () => {
+    expect(computeProximityZone(9, radius)).toBe('burning');
+  });
+
+  it('restituisce burning a distanza 0', () => {
+    expect(computeProximityZone(0, radius)).toBe('burning');
   });
 });
 

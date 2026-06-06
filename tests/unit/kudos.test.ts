@@ -3,8 +3,11 @@ import { registerPlayer } from '../../src/modules/auth/services/auth.service';
 import {
   sendKudos,
   sendFriendRequest,
-  respondFriendRequest,
-  getFriendSuggestions,
+  getFriends,
+  getPendingRequests,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  removeFriend,
 } from '../../src/modules/social/services/social.service';
 import { Kudos } from '../../src/database/models/Kudos.model';
 import { Friendship } from '../../src/database/models/Friendship.model';
@@ -71,10 +74,10 @@ describe('sendKudos', () => {
 // ── sendFriendRequest ─────────────────────────────────────────────────────────
 
 describe('sendFriendRequest', () => {
-  it('lancia BadRequestError SELF_FRIEND se si aggiunge se stessi', async () => {
+  it('lancia BadRequestError CANNOT_FRIEND_SELF se si aggiunge se stessi', async () => {
     const playerId = await createPlayer('f');
     await expect(sendFriendRequest(playerId, playerId)).rejects.toMatchObject({
-      code: 'SELF_FRIEND',
+      code: 'CANNOT_FRIEND_SELF',
     });
   });
 
@@ -87,81 +90,149 @@ describe('sendFriendRequest', () => {
     expect(doc?.status).toBe('pending');
   });
 
-  it('lancia ConflictError FRIENDSHIP_EXISTS per richiesta duplicata', async () => {
+  it('lancia ConflictError FRIENDSHIP_ALREADY_EXISTS per richiesta duplicata', async () => {
     const req = await createPlayer('h1');
     const rec = await createPlayer('h2');
     await sendFriendRequest(req, rec);
     await expect(sendFriendRequest(req, rec)).rejects.toMatchObject({
-      code: 'FRIENDSHIP_EXISTS',
+      code: 'FRIENDSHIP_ALREADY_EXISTS',
     });
   });
 
-  it('lancia ConflictError FRIENDSHIP_EXISTS se la richiesta inversa esiste già', async () => {
+  it('lancia ConflictError FRIENDSHIP_ALREADY_EXISTS se la richiesta inversa esiste già', async () => {
     const p1 = await createPlayer('i1');
     const p2 = await createPlayer('i2');
     await sendFriendRequest(p1, p2);
     await expect(sendFriendRequest(p2, p1)).rejects.toMatchObject({
-      code: 'FRIENDSHIP_EXISTS',
+      code: 'FRIENDSHIP_ALREADY_EXISTS',
     });
   });
 });
 
-// ── respondFriendRequest ──────────────────────────────────────────────────────
+// ── acceptFriendRequest ───────────────────────────────────────────────────────
 
-describe('respondFriendRequest', () => {
+describe('acceptFriendRequest', () => {
   it('accetta la richiesta di amicizia e aggiorna status a accepted', async () => {
-    const req = await createPlayer('j1');
-    const rec = await createPlayer('j2');
-    await sendFriendRequest(req, rec);
-    await respondFriendRequest(rec, req, true);
-    const doc = await Friendship.findOne({ requesterId: req, recipientId: rec });
+    const requester = await createPlayer('j1');
+    const recipient = await createPlayer('j2');
+    await sendFriendRequest(requester, recipient);
+    const friendship = await Friendship.findOne({ requesterId: requester, recipientId: recipient });
+    await acceptFriendRequest(String(friendship!._id), recipient);
+    const doc = await Friendship.findById(friendship!._id);
     expect(doc?.status).toBe('accepted');
   });
 
-  it('rifiuta la richiesta di amicizia e aggiorna status a rejected', async () => {
-    const req = await createPlayer('k1');
-    const rec = await createPlayer('k2');
-    await sendFriendRequest(req, rec);
-    await respondFriendRequest(rec, req, false);
-    const doc = await Friendship.findOne({ requesterId: req, recipientId: rec });
-    expect(doc?.status).toBe('rejected');
+  it('lancia ForbiddenError NOT_THE_RECIPIENT se non è il destinatario', async () => {
+    const requester = await createPlayer('j3');
+    const recipient = await createPlayer('j4');
+    await sendFriendRequest(requester, recipient);
+    const friendship = await Friendship.findOne({ requesterId: requester, recipientId: recipient });
+    await expect(acceptFriendRequest(String(friendship!._id), requester)).rejects.toMatchObject({
+      code: 'NOT_THE_RECIPIENT',
+    });
   });
 
   it('lancia NotFoundError FRIENDSHIP_NOT_FOUND per richiesta inesistente', async () => {
-    const p1 = await createPlayer('l1');
-    const p2 = await createPlayer('l2');
-    await expect(respondFriendRequest(p1, p2, true)).rejects.toMatchObject({
+    const p = await createPlayer('j5');
+    await expect(acceptFriendRequest('000000000000000000000001', p)).rejects.toMatchObject({
       code: 'FRIENDSHIP_NOT_FOUND',
     });
   });
 });
 
-// ── getFriendSuggestions ──────────────────────────────────────────────────────
+// ── rejectFriendRequest ───────────────────────────────────────────────────────
 
-describe('getFriendSuggestions', () => {
-  it('restituisce lista vuota se non ci sono altri player', async () => {
-    const playerId = await createPlayer('m');
-    const suggestions = await getFriendSuggestions(playerId, 10);
-    expect(suggestions).toEqual([]);
+describe('rejectFriendRequest', () => {
+  it('rifiuta la richiesta e aggiorna status a rejected', async () => {
+    const requester = await createPlayer('k1');
+    const recipient = await createPlayer('k2');
+    await sendFriendRequest(requester, recipient);
+    const friendship = await Friendship.findOne({ requesterId: requester, recipientId: recipient });
+    await rejectFriendRequest(String(friendship!._id), recipient);
+    const doc = await Friendship.findById(friendship!._id);
+    expect(doc?.status).toBe('rejected');
   });
 
-  it('esclude player già in amicizia (qualsiasi stato)', async () => {
-    const me = await createPlayer('n1');
-    const friend = await createPlayer('n2');
-    const other = await createPlayer('n3');
-    await sendFriendRequest(me, friend);
+  it('lancia ForbiddenError NOT_THE_RECIPIENT se non è il destinatario', async () => {
+    const requester = await createPlayer('k3');
+    const recipient = await createPlayer('k4');
+    await sendFriendRequest(requester, recipient);
+    const friendship = await Friendship.findOne({ requesterId: requester, recipientId: recipient });
+    await expect(rejectFriendRequest(String(friendship!._id), requester)).rejects.toMatchObject({
+      code: 'NOT_THE_RECIPIENT',
+    });
+  });
+});
 
-    const suggestions = await getFriendSuggestions(me, 10);
-    const ids = suggestions.map((s) => s.playerId);
-    expect(ids).not.toContain(friend);
-    expect(ids).toContain(other);
+// ── getFriends ────────────────────────────────────────────────────────────────
+
+describe('getFriends', () => {
+  it('restituisce lista vuota se non ci sono amici accepted', async () => {
+    const p = await createPlayer('l1');
+    const friends = await getFriends(p);
+    expect(friends).toHaveLength(0);
   });
 
-  it('non include se stesso nei suggerimenti', async () => {
-    const playerId = await createPlayer('o');
-    await createPlayer('o2');
-    const suggestions = await getFriendSuggestions(playerId, 10);
-    const ids = suggestions.map((s) => s.playerId);
-    expect(ids).not.toContain(playerId);
+  it('restituisce gli amici accepted', async () => {
+    const p1 = await createPlayer('l2');
+    const p2 = await createPlayer('l3');
+    await sendFriendRequest(p1, p2);
+    const friendship = await Friendship.findOne({ requesterId: p1, recipientId: p2 });
+    await acceptFriendRequest(String(friendship!._id), p2);
+    const friends = await getFriends(p1);
+    expect(friends.map((f) => f.playerId)).toContain(p2);
+  });
+
+  it('non include amicizie pending', async () => {
+    const p1 = await createPlayer('l4');
+    const p2 = await createPlayer('l5');
+    await sendFriendRequest(p1, p2);
+    const friends = await getFriends(p1);
+    expect(friends).toHaveLength(0);
+  });
+});
+
+// ── getPendingRequests ────────────────────────────────────────────────────────
+
+describe('getPendingRequests', () => {
+  it('restituisce le richieste pending ricevute', async () => {
+    const requester = await createPlayer('m1');
+    const recipient = await createPlayer('m2');
+    await sendFriendRequest(requester, recipient);
+    const requests = await getPendingRequests(recipient);
+    expect(requests.map((r) => r.requesterId)).toContain(requester);
+  });
+
+  it('non include richieste inviate (solo ricevute)', async () => {
+    const sender = await createPlayer('m3');
+    const receiver = await createPlayer('m4');
+    await sendFriendRequest(sender, receiver);
+    const requestsOfSender = await getPendingRequests(sender);
+    expect(requestsOfSender.map((r) => r.requesterId)).not.toContain(receiver);
+  });
+});
+
+// ── removeFriend ──────────────────────────────────────────────────────────────
+
+describe('removeFriend', () => {
+  it("rimuove l'amicizia per entrambi", async () => {
+    const p1 = await createPlayer('n1');
+    const p2 = await createPlayer('n2');
+    await sendFriendRequest(p1, p2);
+    const friendship = await Friendship.findOne({ requesterId: p1, recipientId: p2 });
+    await acceptFriendRequest(String(friendship!._id), p2);
+    await removeFriend(String(friendship!._id), p1);
+    const doc = await Friendship.findById(friendship!._id);
+    expect(doc).toBeNull();
+  });
+
+  it('lancia NotFoundError FRIENDSHIP_NOT_FOUND se non è accepted', async () => {
+    const p1 = await createPlayer('n3');
+    const p2 = await createPlayer('n4');
+    await sendFriendRequest(p1, p2);
+    const friendship = await Friendship.findOne({ requesterId: p1, recipientId: p2 });
+    await expect(removeFriend(String(friendship!._id), p1)).rejects.toMatchObject({
+      code: 'FRIENDSHIP_NOT_FOUND',
+    });
   });
 });

@@ -23,6 +23,18 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default(false),
   FIREBASE_SERVICE_ACCOUNT_KEY_PATH: z.string().default('./firebase-service-account.json'),
+
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  APPLE_CLIENT_ID: z.string().optional(),
+  APPLE_TEAM_ID: z.string().optional(),
+  APPLE_KEY_ID: z.string().optional(),
+  APPLE_PRIVATE_KEY: z.string().optional(),
+
+  SKIP_OAUTH_VERIFICATION: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true')
+    .default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);

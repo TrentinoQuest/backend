@@ -42,6 +42,8 @@ import { CoopChallenge } from '../src/database/models/CoopChallenge.model';
 import { Coupon } from '../src/database/models/Coupon.model';
 import { Friendship } from '../src/database/models/Friendship.model';
 import { BusinessType, BusinessApprovalStatus } from '@trentino-quest/shared-types';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1012,168 +1014,20 @@ async function seedLoreQuestions(): Promise<void> {
 // ── Valli ──────────────────────────────────────────────────────────────────
 
 async function seedValleys(): Promise<void> {
-  const count = await Valley.countDocuments({});
-  if (count >= 10) {
-    logger.info({ count }, "Valli gia' presenti, skip");
-    return;
+  const raw = readFileSync(
+    join(process.cwd(), 'scripts', 'data', 'trentino-valleys.json'),
+    'utf-8',
+  );
+  const valleys = JSON.parse(raw) as { name: string; polygon: object }[];
+
+  for (const v of valleys) {
+    await Valley.findOneAndUpdate(
+      { name: v.name },
+      { name: v.name, polygon: v.polygon },
+      { upsert: true, new: true },
+    );
   }
-
-  // Bounding box rettangolari approssimati in coordinate GeoJSON [lng, lat]
-  const valleys = [
-    {
-      name: 'Val di Non',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [10.85, 46.3],
-            [11.15, 46.3],
-            [11.15, 46.55],
-            [10.85, 46.55],
-            [10.85, 46.3],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Val di Sole',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [10.55, 46.28],
-            [10.95, 46.28],
-            [10.95, 46.48],
-            [10.55, 46.48],
-            [10.55, 46.28],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Valsugana',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [11.08, 45.92],
-            [11.55, 45.92],
-            [11.55, 46.18],
-            [11.08, 46.18],
-            [11.08, 45.92],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Val di Fiemme',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [11.28, 46.2],
-            [11.72, 46.2],
-            [11.72, 46.4],
-            [11.28, 46.4],
-            [11.28, 46.2],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Val di Fassa',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [11.58, 46.33],
-            [11.92, 46.33],
-            [11.92, 46.62],
-            [11.58, 46.62],
-            [11.58, 46.33],
-          ],
-        ],
-      },
-    },
-    {
-      name: "Valle dell'Adige",
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [10.88, 45.82],
-            [11.28, 45.82],
-            [11.28, 46.22],
-            [10.88, 46.22],
-            [10.88, 45.82],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Giudicarie',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [10.52, 45.82],
-            [10.95, 45.82],
-            [10.95, 46.18],
-            [10.52, 46.18],
-            [10.52, 45.82],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Valle dei Laghi',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [10.82, 45.88],
-            [11.08, 45.88],
-            [11.08, 46.15],
-            [10.82, 46.15],
-            [10.82, 45.88],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Rovereto e Vallagarina',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [10.92, 45.72],
-            [11.18, 45.72],
-            [11.18, 45.98],
-            [10.92, 45.98],
-            [10.92, 45.72],
-          ],
-        ],
-      },
-    },
-    {
-      name: 'Altopiano di Piné',
-      polygon: {
-        type: 'Polygon' as const,
-        coordinates: [
-          [
-            [11.12, 46.03],
-            [11.38, 46.03],
-            [11.38, 46.22],
-            [11.12, 46.22],
-            [11.12, 46.03],
-          ],
-        ],
-      },
-    },
-  ];
-
-  await Valley.insertMany(valleys);
-  logger.info({ count: valleys.length }, 'Valli inserite');
+  logger.info({ count: valleys.length }, 'Valli seedate da dati PAT');
 }
 
 // ── Lega iniziale ──────────────────────────────────────────────────────────

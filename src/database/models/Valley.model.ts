@@ -1,11 +1,11 @@
 import { Schema, model, Document, Model } from 'mongoose';
 
+type GeoPolygon = { type: 'Polygon'; coordinates: [number, number][][] };
+type GeoMultiPolygon = { type: 'MultiPolygon'; coordinates: [number, number][][][] };
+
 export interface IValley extends Document {
   name: string;
-  polygon: {
-    type: 'Polygon';
-    coordinates: [number, number][][];
-  };
+  polygon: GeoPolygon | GeoMultiPolygon;
 }
 
 const valleySchema = new Schema<IValley>(
@@ -14,11 +14,10 @@ const valleySchema = new Schema<IValley>(
     polygon: {
       type: {
         type: String,
-        enum: ['Polygon'],
+        enum: ['Polygon', 'MultiPolygon'],
         required: true,
-        default: 'Polygon',
       },
-      coordinates: { type: [[[Number]]], required: true },
+      coordinates: { type: Schema.Types.Mixed, required: true },
     },
   },
   { collection: 'valleys' },

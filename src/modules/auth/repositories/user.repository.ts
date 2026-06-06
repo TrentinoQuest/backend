@@ -55,7 +55,6 @@ export async function createPlayer(input: {
   email: string;
   password: string;
   username: string;
-  playerClass?: string | null;
 }): Promise<IPlayer> {
   const player = new Player(input);
   return player.save();
