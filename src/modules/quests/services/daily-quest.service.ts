@@ -12,9 +12,17 @@ function todayString(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-function pickThreeRandom<T>(arr: T[]): T[] {
-  const shuffled = [...arr].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 3);
+function getDayOfYear(date: Date): number {
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date.getTime() - start.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+function pickThreeDeterministic<T>(arr: T[]): T[] {
+  const day = getDayOfYear(new Date());
+  const step = Math.floor(arr.length / 3);
+  const indices = [0, 1, 2].map((i) => (day * 3 + i * step) % arr.length);
+  return indices.map((i) => arr[i]);
 }
 
 export async function getDailyQuests(
@@ -28,7 +36,7 @@ export async function getDailyQuests(
     const pool = DAILY_QUEST_POOL.filter(
       (q) => q.context === context || q.context === DailyQuestContext.ANY,
     );
-    const picked = pickThreeRandom(pool);
+    const picked = pickThreeDeterministic(pool);
     assignment = await DailyQuestAssignment.create({
       playerId,
       date,

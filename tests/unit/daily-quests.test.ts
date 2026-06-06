@@ -82,6 +82,14 @@ describe('getDailyQuests', () => {
     expect(second.quests.map((q) => q.type)).toEqual(first.quests.map((q) => q.type));
   });
 
+  it('è deterministica: due player diversi vedono le stesse missioni nello stesso giorno', async () => {
+    const player1 = await createPlayer('det1');
+    const player2 = await createPlayer('det2');
+    const view1 = await getDailyQuests(player1, DailyQuestContext.IN_TRENTINO);
+    const view2 = await getDailyQuests(player2, DailyQuestContext.IN_TRENTINO);
+    expect(view2.quests.map((q) => q.type)).toEqual(view1.quests.map((q) => q.type));
+  });
+
   it('include la data nel formato YYYY-MM-DD', async () => {
     const playerId = await createPlayer('e');
     const view = await getDailyQuests(playerId, DailyQuestContext.IN_TRENTINO);
