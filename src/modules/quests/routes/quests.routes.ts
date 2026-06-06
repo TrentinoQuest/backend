@@ -33,6 +33,7 @@ import {
   updatePositionHandler,
   reportIssueHandler,
 } from '../controllers/operator.controller';
+import { proximityHandler } from '../controllers/quest-proximity.controller';
 import {
   listAdminCollectiblesHandler,
   getAdminCollectibleHandler,
@@ -64,6 +65,7 @@ export function createQuestsRouter(): Router {
   // IQuestCompletion - completamento riservato ai giocatori
   router.post('/quests/:id/check-in', authenticate, requireRole(UserRole.PLAYER), checkInHandler);
   router.post('/quests/:id/scan', authenticate, requireRole(UserRole.PLAYER), scanQrHandler);
+  router.get('/quests/:id/proximity', authenticate, requireRole(UserRole.PLAYER), proximityHandler);
 
   // IPlayerProfile - riservata ai giocatori
   router.get('/player/me', authenticate, requireRole(UserRole.PLAYER), getPlayerMeHandler);
