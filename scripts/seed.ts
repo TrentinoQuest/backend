@@ -3,11 +3,10 @@
  *
  * Popola il database con dati di esempio coerenti con il dominio:
  * - Utenti: 1 admin, 1 operatore, 1 business approvato
- * - 5 collezionabili
- * - 5 quest secondarie (3 con completamenti, 2 mai completate)
- * - 2 quest principali con QR code
- * - 12 player con punti diversi (leaderboard visibile)
- * - ~35 completamenti distribuiti sugli ultimi 90 giorni (grafici analytics)
+ * - 12 player con dati gamification
+ * - 150 quest principali + 150 collezionabili (da trentino-quest-seed-data.json)
+ * - 300 quest secondarie (da trentino-quest-seed-data.json)
+ * - Domande lore, valli PAT, lega iniziale
  *
  * Utilizzo:
  *   npm run seed             (aggiunge dati al DB esistente, idempotente)
@@ -51,21 +50,6 @@ function generateQrToken(): string {
   return 'qr_' + randomBytes(16).toString('hex');
 }
 
-/** Restituisce una data esatta N giorni fa alle ore indicate. */
-function daysAgo(n: number, hour = 10): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(hour, 0, 0, 0);
-  return d;
-}
-
-/** Aggiunge un piccolo offset casuale deterministico alle coordinate. */
-function nearPosition(lng: number, lat: number, offsetIdx: number): [number, number] {
-  const deltas = [0, 0.0002, -0.0002, 0.0003, -0.0003, 0.0001, -0.0001, 0.0004, -0.0004, 0.00015];
-  const d = deltas[offsetIdx % deltas.length];
-  return [lng + d, lat + d * 0.6];
-}
-
 // ── Clean ──────────────────────────────────────────────────────────────────
 
 /**
@@ -93,258 +77,184 @@ async function cleanCollections(): Promise<void> {
   logger.info('Pulizia completata');
 }
 
-// ── Collezionabili ─────────────────────────────────────────────────────────
+// ── Tipi dati JSON ─────────────────────────────────────────────────────────
 
-interface CollectibleIds {
-  buonconsiglioId: string;
-  cascateId: string;
-  aquilaId: string;
-  fossiliId: string;
-  lagoColdaiId: string;
+interface CollectibleSeedData {
+  name: string;
+  description: string;
+  rarity: string;
+  lore: string;
+  coordinates: { lat: number; lng: number };
+  imageUrl: string;
 }
 
-async function seedCollectibles(): Promise<CollectibleIds> {
-  const items = [
-    {
-      key: 'buonconsiglio',
-      name: 'Falconiere del Buonconsiglio',
-      description:
-        "Un emblema medievale che ricorda l'arte della falconeria praticata dai principi vescovi di Trento.",
-      imageUrl: 'https://example.com/collectibles/falconiere.png',
-      rarity: CollectibleRarity.UNCOMMON,
-    },
-    {
-      key: 'cascate',
-      name: 'Spirito delle Cascate',
-      description:
-        'Una rara essenza scintillante che emerge solo nei pressi delle cascate piu' +
-        ' nascoste della valle.',
-      imageUrl: 'https://example.com/collectibles/cascate.png',
-      rarity: CollectibleRarity.RARE,
-    },
-    {
-      key: 'aquila',
-      name: 'Aquila delle Dolomiti',
-      description: 'La maestosa aquila reale, simbolo delle vette trentine.',
-      imageUrl: 'https://example.com/collectibles/aquila.png',
-      rarity: CollectibleRarity.LEGENDARY,
-    },
-    {
-      key: 'fossili',
-      name: 'Ammonite Giurassica',
-      description: 'Un fossile di ammonite trovato sulle Dolomiti, testimone di mari antichi.',
-      imageUrl: 'https://example.com/collectibles/ammonite.png',
-      rarity: CollectibleRarity.RARE,
-    },
-    {
-      key: 'lagoColdai',
-      name: 'Cristallo del Lago Coldai',
-      description: 'Un cristallo trasparente che riflette il blu del lago alpino.',
-      imageUrl: 'https://example.com/collectibles/cristallo.png',
-      rarity: CollectibleRarity.COMMON,
-    },
-  ] as const;
-
-  const ids: Record<string, string> = {};
-  for (const item of items) {
-    const { key, ...data } = item;
-    const existing = await Collectible.findOne({ name: data.name });
-    const doc = existing ?? (await Collectible.create(data));
-    ids[key] = String(doc._id);
-  }
-
-  logger.info({ collectibleCount: items.length }, 'Collezionabili inseriti');
-  return ids as unknown as CollectibleIds;
-}
-
-// ── Quest secondarie ───────────────────────────────────────────────────────
-
-interface QuestPositions {
-  dossLng: number;
-  dossLat: number;
-  tovelLng: number;
-  tovelLat: number;
-  besenoLng: number;
-  besenoLat: number;
-}
-
-interface SecondaryQuestIds {
-  dossTrentoId: Types.ObjectId;
-  lagoTovelId: Types.ObjectId;
-  castelBesenoId: Types.ObjectId;
-  /** Quest mai completate (per il grafico "zone ignorate") */
-  palazzoMagnificaId: Types.ObjectId;
-  eremoRomediId: Types.ObjectId;
-  positions: QuestPositions;
-}
-
-async function seedSecondaryQuests(): Promise<SecondaryQuestIds> {
-  const definitions = [
-    {
-      name: 'Doss Trento',
-      description:
-        "Sali al Doss Trento, la collina simbolo della citta' che ospita il Mausoleo di Cesare Battisti e regala una vista panoramica unica.",
-      basePoints: 50,
-      checkInRadiusMeters: 15,
-      position: { type: 'Point' as const, coordinates: [11.118, 46.068] as [number, number] },
-    },
-    {
-      name: 'Lago di Tovel',
-      description:
-        'Raggiungi le sponde del Lago di Tovel, gioiello incastonato nel Parco Naturale Adamello-Brenta, famoso per le sue acque cristalline.',
-      basePoints: 80,
-      checkInRadiusMeters: 20,
-      position: { type: 'Point' as const, coordinates: [10.9491, 46.2614] as [number, number] },
-    },
-    {
-      name: 'Castel Beseno',
-      description:
-        "Visita Castel Beseno, la piu' grande fortezza del Trentino arroccata sulla collina che domina la Vallagarina.",
-      basePoints: 60,
-      checkInRadiusMeters: 10,
-      position: { type: 'Point' as const, coordinates: [11.0911, 45.8403] as [number, number] },
-    },
-    // Le seguenti due non ricevono completamenti: compaiono nel grafico "zone ignorate"
-    {
-      name: 'Palazzo della Magnifica Comunita',
-      description:
-        "Ammira il palazzo rinascimentale di Cavalese, sede storica della Magnifica Comunita' di Fiemme.",
-      basePoints: 70,
-      checkInRadiusMeters: 10,
-      position: { type: 'Point' as const, coordinates: [11.4553, 46.2913] as [number, number] },
-    },
-    {
-      name: 'Eremo di San Romedio',
-      description:
-        'Raggiungi il suggestivo eremo di San Romedio, arroccato su uno sperone roccioso in Val di Non.',
-      basePoints: 90,
-      checkInRadiusMeters: 15,
-      position: { type: 'Point' as const, coordinates: [11.0789, 46.3581] as [number, number] },
-    },
-  ] as const;
-
-  const docIds: Types.ObjectId[] = [];
-  for (const data of definitions) {
-    const existing = await SecondaryQuest.findOne({ name: data.name });
-    const doc =
-      existing ??
-      (await SecondaryQuest.create({
-        ...data,
-        type: QuestType.SECONDARY,
-        status: QuestStatus.ACTIVE,
-      }));
-    docIds.push(doc._id);
-  }
-
-  logger.info({ secondaryQuestCount: definitions.length }, 'Quest secondarie inserite');
-
-  return {
-    dossTrentoId: docIds[0],
-    lagoTovelId: docIds[1],
-    castelBesenoId: docIds[2],
-    palazzoMagnificaId: docIds[3],
-    eremoRomediId: docIds[4],
-    positions: {
-      dossLng: 11.118,
-      dossLat: 46.068,
-      tovelLng: 10.9491,
-      tovelLat: 46.2614,
-      besenoLng: 11.0911,
-      besenoLat: 45.8403,
-    },
+interface PrimaryQuestSeedData {
+  name: string;
+  type: 'primary';
+  valley: string;
+  description: string;
+  lore: string;
+  exactPosition: { type: 'Point'; coordinates: [number, number] };
+  searchArea: {
+    center: { type: 'Point'; coordinates: [number, number] };
+    radiusMeters: number;
   };
+  basePoints: number;
+  status: string;
+  placementStatus: string;
+  collectible: CollectibleSeedData;
 }
 
-// ── Quest principali ───────────────────────────────────────────────────────
-
-interface PrimaryQuestIds {
-  buonconsiglioId: Types.ObjectId;
-  cascateId: Types.ObjectId;
-  buonconsiglioToken: string;
-  cascateToken: string;
-  buonconsiglioLng: number;
-  buonconsiglioLat: number;
-  cascateLng: number;
-  cascateLat: number;
+interface SecondaryQuestSeedData {
+  name: string;
+  type: 'secondary';
+  valley: string;
+  description: string;
+  lore: string;
+  position: { type: 'Point'; coordinates: [number, number] };
+  checkInRadiusMeters: number;
+  basePoints: number;
+  status: string;
 }
 
-async function seedPrimaryQuests(collectibleIds: CollectibleIds): Promise<PrimaryQuestIds> {
-  const items = [
-    {
-      name: 'Tesoro del Buonconsiglio',
-      description:
-        'Esplora il Castello del Buonconsiglio e trova il QR code nascosto nei suoi cortili.',
-      basePoints: 150,
-      searchArea: { type: 'Point' as const, coordinates: [11.1247, 46.0696] as [number, number] },
-      searchRadiusMeters: 25,
-      exactPosition: { type: 'Point' as const, coordinates: [11.125, 46.07] as [number, number] },
-      validationRadiusMeters: 5,
-      collectibleId: collectibleIds.buonconsiglioId,
-      lng: 11.125,
-      lat: 46.07,
-    },
-    {
-      name: 'Segreto delle Cascate del Varone',
-      description:
-        'Scendi nella forra delle Cascate del Varone e scopri il QR code custodito tra le rocce umide.',
-      basePoints: 200,
-      searchArea: { type: 'Point' as const, coordinates: [10.8689, 45.9006] as [number, number] },
-      searchRadiusMeters: 25,
-      exactPosition: { type: 'Point' as const, coordinates: [10.869, 45.9008] as [number, number] },
-      validationRadiusMeters: 5,
-      collectibleId: collectibleIds.cascateId,
-      lng: 10.869,
-      lat: 45.9008,
-    },
-  ] as const;
+type QuestSeedEntry = PrimaryQuestSeedData | SecondaryQuestSeedData;
 
-  const results: { id: Types.ObjectId; token: string }[] = [];
+interface QuestSeedFile {
+  _meta: unknown;
+  quests: QuestSeedEntry[];
+}
 
-  for (const item of items) {
-    const { lng, lat, ...questData } = item;
-    void lng;
-    void lat;
-    const existing = await PrimaryQuest.findOne({ name: questData.name });
-    let doc = existing;
-    if (!doc) {
-      const token = generateQrToken();
-      doc = await PrimaryQuest.create({
-        ...questData,
-        type: QuestType.PRIMARY,
-        status: QuestStatus.ACTIVE,
-        qrToken: token,
-        placementStatus: PlacementStatus.PLACED,
+// ── Quest da dati JSON ─────────────────────────────────────────────────────
+
+/**
+ * Legge trentino-quest-seed-data.json e popola:
+ * - Collezionabili (uno per quest principale, upsert su name)
+ * - Quest principali con collectibleId collegato (upsert su name)
+ * - Quest secondarie (upsert su name)
+ */
+async function seedQuestsFromData(): Promise<void> {
+  const raw = readFileSync(
+    join(process.cwd(), 'scripts', 'data', 'trentino-quest-seed-data.json'),
+    'utf-8',
+  );
+  const data = JSON.parse(raw) as QuestSeedFile;
+  const quests = data.quests;
+
+  const primaryQuests = quests.filter((q): q is PrimaryQuestSeedData => q.type === 'primary');
+  const secondaryQuests = quests.filter((q): q is SecondaryQuestSeedData => q.type === 'secondary');
+
+  let collectiblesCreated = 0;
+  let primaryCreated = 0;
+  let primaryUpdated = 0;
+  let secondaryCreated = 0;
+  let secondaryUpdated = 0;
+
+  // Quest principali: prima crea il collezionabile, poi la quest
+  for (const q of primaryQuests) {
+    const c = q.collectible;
+
+    // Upsert collezionabile su name
+    const existingCollectible = await Collectible.findOne({ name: c.name });
+    let collectibleDoc;
+    if (!existingCollectible) {
+      collectibleDoc = await Collectible.create({
+        name: c.name,
+        description: c.description,
+        imageUrl: c.imageUrl,
+        rarity: c.rarity as CollectibleRarity,
+        lore: c.lore ?? null,
+        coordinates: {
+          type: 'Point' as const,
+          coordinates: [c.coordinates.lng, c.coordinates.lat] as [number, number],
+        },
       });
-      results.push({ id: doc._id, token });
+      collectiblesCreated++;
     } else {
-      results.push({
-        id: doc._id,
-        token: (doc as { qrToken?: string }).qrToken ?? '(esistente)',
+      collectibleDoc = existingCollectible;
+    }
+
+    const collectibleId = collectibleDoc._id;
+
+    // Upsert quest principale su name
+    const existingQuest = await PrimaryQuest.findOne({ name: q.name });
+    if (!existingQuest) {
+      await PrimaryQuest.create({
+        name: q.name,
+        description: q.description,
+        type: QuestType.PRIMARY,
+        status: (q.status as QuestStatus) ?? QuestStatus.ACTIVE,
+        basePoints: q.basePoints,
+        searchArea: q.searchArea.center,
+        searchRadiusMeters: q.searchArea.radiusMeters,
+        exactPosition: q.exactPosition ?? null,
+        validationRadiusMeters: 30,
+        qrToken: generateQrToken(),
+        collectibleId,
+        placementStatus: (q.placementStatus as PlacementStatus) ?? PlacementStatus.PLACED,
       });
+      primaryCreated++;
+    } else {
+      await PrimaryQuest.findOneAndUpdate(
+        { name: q.name },
+        {
+          $set: {
+            description: q.description,
+            status: (q.status as QuestStatus) ?? QuestStatus.ACTIVE,
+            basePoints: q.basePoints,
+            searchArea: q.searchArea.center,
+            searchRadiusMeters: q.searchArea.radiusMeters,
+            exactPosition: q.exactPosition ?? null,
+            collectibleId,
+            placementStatus: (q.placementStatus as PlacementStatus) ?? PlacementStatus.PLACED,
+          },
+        },
+      );
+      primaryUpdated++;
     }
   }
 
-  logger.info({ primaryQuestCount: items.length }, 'Quest principali inserite');
+  // Quest secondarie
+  for (const q of secondaryQuests) {
+    const existingQuest = await SecondaryQuest.findOne({ name: q.name });
+    if (!existingQuest) {
+      await SecondaryQuest.create({
+        name: q.name,
+        description: q.description,
+        type: QuestType.SECONDARY,
+        status: (q.status as QuestStatus) ?? QuestStatus.ACTIVE,
+        basePoints: q.basePoints,
+        position: q.position,
+        checkInRadiusMeters: q.checkInRadiusMeters ?? 50,
+      });
+      secondaryCreated++;
+    } else {
+      await SecondaryQuest.findOneAndUpdate(
+        { name: q.name },
+        {
+          $set: {
+            description: q.description,
+            status: (q.status as QuestStatus) ?? QuestStatus.ACTIVE,
+            basePoints: q.basePoints,
+            position: q.position,
+            checkInRadiusMeters: q.checkInRadiusMeters ?? 50,
+          },
+        },
+      );
+      secondaryUpdated++;
+    }
+  }
+
   logger.info(
     {
-      tokens: {
-        'Tesoro del Buonconsiglio': results[0].token,
-        'Segreto delle Cascate del Varone': results[1].token,
-      },
+      collectiblesCreated,
+      primaryCreated,
+      primaryUpdated,
+      secondaryCreated,
+      secondaryUpdated,
+      totalQuests: primaryCreated + primaryUpdated + secondaryCreated + secondaryUpdated,
     },
-    'QR token per test (usa questi nelle chiamate curl di scan)',
+    'Quest e collezionabili seedati da dati JSON',
   );
-
-  return {
-    buonconsiglioId: results[0].id,
-    cascateId: results[1].id,
-    buonconsiglioToken: results[0].token,
-    cascateToken: results[1].token,
-    buonconsiglioLng: 11.125,
-    buonconsiglioLat: 46.07,
-    cascateLng: 10.869,
-    cascateLat: 45.9008,
-  };
 }
 
 // ── Utenti seed ────────────────────────────────────────────────────────────
@@ -450,143 +360,6 @@ async function seedPlayers(): Promise<Types.ObjectId[]> {
   }
   logger.info({ playerCount: ids.length }, 'Player inseriti');
   return ids;
-}
-
-// ── Completamenti ──────────────────────────────────────────────────────────
-
-/**
- * Piano dei completamenti per i grafici analytics.
- *
- * Distribuzione progettata per mostrare:
- *  - Top quests: Doss Trento 1°, Lago di Tovel 2°, Castel Beseno 3°
- *  - Heatmap: cluster a Trento, Tovel e Beseno
- *  - Serie temporale: dati su 90 giorni con picchi leggibili
- *  - Leaderboard: p0 e p1 in testa (tutte le quest), poi scalari
- *  - "Zone ignorate": Palazzo Magnifica e Eremo Romedio senza completamenti
- *
- * Ogni riga: [playerIdx, questKey, daysAgo, hour]
- */
-const COMPLETION_PLAN: [number, string, number, number][] = [
-  // ── Doss Trento (50 pts) ── 9 completamenti
-  [0, 'dossTrento', 88, 9],
-  [1, 'dossTrento', 80, 14],
-  [2, 'dossTrento', 72, 11],
-  [3, 'dossTrento', 64, 16],
-  [4, 'dossTrento', 50, 10],
-  [5, 'dossTrento', 38, 15],
-  [6, 'dossTrento', 25, 9],
-  [7, 'dossTrento', 14, 13],
-  [8, 'dossTrento', 5, 10],
-
-  // ── Lago di Tovel (80 pts) ── 7 completamenti
-  [0, 'lagoTovel', 85, 10],
-  [1, 'lagoTovel', 75, 9],
-  [2, 'lagoTovel', 62, 14],
-  [3, 'lagoTovel', 48, 11],
-  [4, 'lagoTovel', 33, 16],
-  [5, 'lagoTovel', 20, 10],
-  [6, 'lagoTovel', 8, 12],
-
-  // ── Castel Beseno (60 pts) ── 5 completamenti
-  [0, 'castelBeseno', 82, 15],
-  [1, 'castelBeseno', 68, 11],
-  [2, 'castelBeseno', 45, 10],
-  [3, 'castelBeseno', 28, 14],
-  [4, 'castelBeseno', 10, 16],
-
-  // ── Buonconsiglio (150 pts) ── 4 completamenti
-  [0, 'buonconsiglio', 78, 11],
-  [1, 'buonconsiglio', 55, 14],
-  [2, 'buonconsiglio', 30, 10],
-  [3, 'buonconsiglio', 12, 15],
-
-  // ── Cascate del Varone (200 pts) ── 2 completamenti
-  [0, 'cascate', 70, 13],
-  [1, 'cascate', 35, 10],
-];
-
-interface QuestLookup {
-  dossTrento: { id: Types.ObjectId; lng: number; lat: number; pts: number };
-  lagoTovel: { id: Types.ObjectId; lng: number; lat: number; pts: number };
-  castelBeseno: { id: Types.ObjectId; lng: number; lat: number; pts: number };
-  buonconsiglio: { id: Types.ObjectId; lng: number; lat: number; pts: number };
-  cascate: { id: Types.ObjectId; lng: number; lat: number; pts: number };
-}
-
-async function seedCompletions(
-  playerIds: Types.ObjectId[],
-  secondaryIds: SecondaryQuestIds,
-  primaryIds: PrimaryQuestIds,
-): Promise<void> {
-  const questLookup: QuestLookup = {
-    dossTrento: {
-      id: secondaryIds.dossTrentoId,
-      lng: secondaryIds.positions.dossLng,
-      lat: secondaryIds.positions.dossLat,
-      pts: 50,
-    },
-    lagoTovel: {
-      id: secondaryIds.lagoTovelId,
-      lng: secondaryIds.positions.tovelLng,
-      lat: secondaryIds.positions.tovelLat,
-      pts: 80,
-    },
-    castelBeseno: {
-      id: secondaryIds.castelBesenoId,
-      lng: secondaryIds.positions.besenoLng,
-      lat: secondaryIds.positions.besenoLat,
-      pts: 60,
-    },
-    buonconsiglio: {
-      id: primaryIds.buonconsiglioId,
-      lng: primaryIds.buonconsiglioLng,
-      lat: primaryIds.buonconsiglioLat,
-      pts: 150,
-    },
-    cascate: {
-      id: primaryIds.cascateId,
-      lng: primaryIds.cascateLng,
-      lat: primaryIds.cascateLat,
-      pts: 200,
-    },
-  };
-
-  // Accumula i punti per aggiornare totalPoints dei player alla fine
-  const pointsAccumulator: Map<string, number> = new Map();
-
-  let created = 0;
-  let skipped = 0;
-
-  for (const [playerIdx, questKey, days, hour] of COMPLETION_PLAN) {
-    const playerId = playerIds[playerIdx];
-    const quest = questLookup[questKey as keyof QuestLookup];
-
-    const alreadyExists = await Completion.exists({ playerId, questId: quest.id });
-    if (alreadyExists) {
-      skipped++;
-      continue;
-    }
-
-    const [lng, lat] = nearPosition(quest.lng, quest.lat, playerIdx);
-    await Completion.create({
-      playerId,
-      questId: quest.id,
-      pointsAwarded: quest.pts,
-      position: { type: 'Point', coordinates: [lng, lat] },
-      completedAt: daysAgo(days, hour),
-    });
-
-    const key = String(playerId);
-    pointsAccumulator.set(key, (pointsAccumulator.get(key) ?? 0) + quest.pts);
-    created++;
-  }
-
-  // Aggiorna totalPoints per ogni player che ha guadagnato punti
-  for (const [playerIdStr, pts] of pointsAccumulator) {
-    await Player.findByIdAndUpdate(playerIdStr, { $inc: { totalPoints: pts } });
-  }
-
-  logger.info({ created, skipped }, 'Completamenti inseriti');
 }
 
 // ── Dati gamification demo ─────────────────────────────────────────────────
@@ -1099,16 +872,12 @@ async function run(): Promise<void> {
     await seedOperatorUser();
     await seedBusinessWithOffers();
 
-    const collectibleIds = await seedCollectibles();
-    const secondaryIds = await seedSecondaryQuests();
-    const primaryIds = await seedPrimaryQuests(collectibleIds);
-
     const playerIds = await seedPlayers();
-    await seedCompletions(playerIds, secondaryIds, primaryIds);
     await seedGamificationData(playerIds);
 
     await seedLoreQuestions();
     await seedValleys();
+    await seedQuestsFromData();
     await seedLeague(playerIds);
 
     logger.info('Seed completato con successo');
