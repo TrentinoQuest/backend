@@ -156,7 +156,14 @@ export async function getSocialLeaderboard(playerId: string): Promise<SocialLead
   return entries.map((e, i) => ({ rank: i + 1, ...e }));
 }
 
-export async function sendFriendRequest(requesterId: string, recipientId: string): Promise<void> {
+export async function sendFriendRequest(
+  requesterId: string,
+  recipientUsername: string,
+): Promise<void> {
+  const recipient = await Player.findOne({ username: recipientUsername }).select('_id fcmToken');
+  if (!recipient) throw new NotFoundError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
+
+  const recipientId = String(recipient._id);
   if (requesterId === recipientId)
     throw new BadRequestError('Non puoi aggiungerti da solo', 'CANNOT_FRIEND_SELF');
 
@@ -171,8 +178,7 @@ export async function sendFriendRequest(requesterId: string, recipientId: string
   await Friendship.create({ requesterId, recipientId });
 
   const requester = await Player.findById(requesterId).select('username');
-  const recipient = await Player.findById(recipientId).select('fcmToken');
-  if (requester && recipient?.fcmToken) {
+  if (requester && recipient.fcmToken) {
     await sendPushNotification(
       recipient.fcmToken,
       'Nuova richiesta di amicizia',

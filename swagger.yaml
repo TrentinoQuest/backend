@@ -3523,14 +3523,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [recipientId]
+              required: [username]
               properties:
-                recipientId: { type: string }
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  description: Username del giocatore a cui inviare la richiesta
       responses:
         '201':
           description: Richiesta inviata
         '400':
           description: Auto-amicizia o errore validazione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Giocatore con username non trovato
           content:
             application/json:
               schema:
