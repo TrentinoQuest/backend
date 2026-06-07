@@ -16,7 +16,7 @@ export async function listOffersHandler(
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const offers = await listOffersForMarket();
-    res.status(200).json({ data: offers });
+    res.status(200).json(offers);
   } catch (err) {
     next(err);
   }

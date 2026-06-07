@@ -27,22 +27,39 @@ function serializeCoupon(coupon: ICoupon, offerTitle?: string, businessName?: st
 export async function listOffersForMarket(): Promise<
   {
     id: string;
+    businessId: string;
     title: string;
     description: string;
     pointsCost: number;
+    status: string;
+    createdAt: string;
     remaining: number | null;
     businessName: string;
+    businessType: string;
+    businessAddress: string;
+    businessPosition: { lat: number; lng: number };
   }[]
 > {
   const { offers, businessesById } = await listOffersForPlayers();
-  return offers.map((o) => ({
-    id: String(o._id),
-    title: o.title,
-    description: o.description,
-    pointsCost: o.pointsCost,
-    remaining: o.remaining,
-    businessName: businessesById.get(String(o.businessId))?.businessName ?? '',
-  }));
+  return offers.map((o) => {
+    const business = businessesById.get(String(o.businessId));
+    return {
+      id: String(o._id),
+      businessId: String(o.businessId),
+      title: o.title,
+      description: o.description,
+      pointsCost: o.pointsCost,
+      status: o.status,
+      createdAt: o.createdAt.toISOString(),
+      remaining: o.remaining,
+      businessName: business?.businessName ?? '',
+      businessType: business?.businessType ?? 'other',
+      businessAddress: business?.address ?? '',
+      businessPosition: business
+        ? { lat: business.position.coordinates[1], lng: business.position.coordinates[0] }
+        : { lat: 0, lng: 0 },
+    };
+  });
 }
 
 export async function purchaseOffer(playerId: string, offerId: string): Promise<CouponView> {
