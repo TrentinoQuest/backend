@@ -40,7 +40,6 @@ export interface IPlayer extends IUser {
   longestStreak: number;
   lastQuestDate: Date | null;
   streakShieldActive: boolean;
-  coins: number;
   fcmToken: string | null;
   onboardingCompleted: boolean;
   currentLeagueTier: string;
@@ -177,7 +176,6 @@ const playerSchema = new Schema<IPlayer>({
   longestStreak: { type: Number, default: 0, min: 0 },
   lastQuestDate: { type: Date, default: null },
   streakShieldActive: { type: Boolean, default: false },
-  coins: { type: Number, default: 0, min: 0 },
   fcmToken: { type: String, default: null },
   onboardingCompleted: { type: Boolean, default: false },
   currentLeagueTier: { type: String, default: 'porfido' },

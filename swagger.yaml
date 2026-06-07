@@ -258,10 +258,6 @@ components:
               type: integer
               nullable: true
               description: XP mancanti al prossimo livello, null se al livello massimo
-            coins:
-              type: integer
-              minimum: 0
-              description: Valuta spendibile nel mercato coupon
             onboardingCompleted:
               type: boolean
               description: Il player ha completato l'onboarding
