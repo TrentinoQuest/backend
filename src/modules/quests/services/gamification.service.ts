@@ -54,7 +54,7 @@ export async function applyGamification(
     player.longestStreak = player.currentStreak;
   }
 
-  // Passo 5: XP, livello e monete
+  // Passo 5: XP, livello e punti guadagnati
   const multiplier = computeStreakMultiplier(player.currentStreak);
   const xpAwarded = computeXpAwarded(questType, player.currentStreak);
   const coinsAwarded = Math.round(
@@ -73,7 +73,7 @@ export async function applyGamification(
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   player.lastQuestDate = todayDate;
 
-  // Passo 8: update atomico (gamification + coins)
+  // Passo 8: update atomico (gamification + totalPoints)
   await Player.findByIdAndUpdate(playerId, {
     xp: player.xp,
     level: newLevelData.level,
@@ -81,7 +81,7 @@ export async function applyGamification(
     longestStreak: player.longestStreak,
     lastQuestDate: player.lastQuestDate,
     streakShieldActive: player.streakShieldActive,
-    $inc: { coins: coinsAwarded },
+    $inc: { totalPoints: coinsAwarded },
   });
 
   // Aggiorna weeklyXp nella lega corrente (fire-and-forget)

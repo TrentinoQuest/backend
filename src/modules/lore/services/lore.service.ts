@@ -72,7 +72,7 @@ export async function answerDailyQuestion(
 
   if (correct) {
     coinsAwarded = 50;
-    await Player.findByIdAndUpdate(playerId, { $inc: { coins: 50 } });
+    await Player.findByIdAndUpdate(playerId, { $inc: { totalPoints: 50 } });
 
     const secondaryQuests = await Quest.find({
       type: QuestType.SECONDARY,

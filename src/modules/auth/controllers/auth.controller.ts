@@ -214,7 +214,7 @@ export async function completeOnboardingHandler(
     }
     player.onboardingCompleted = true;
     player.xp += 100;
-    player.coins = (player.coins ?? 0) + 50;
+    player.totalPoints = (player.totalPoints ?? 0) + 50;
     await player.save();
     res.status(200).json({ xpAwarded: 100, coinsAwarded: 50 });
   } catch (err) {

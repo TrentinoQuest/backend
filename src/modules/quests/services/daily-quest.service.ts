@@ -90,7 +90,7 @@ export async function completeDailyQuest(
   await assignment.save();
 
   await Player.findByIdAndUpdate(playerId, {
-    $inc: { xp: quest.xpReward, coins: quest.coinsReward },
+    $inc: { xp: quest.xpReward, totalPoints: quest.coinsReward },
   });
 
   return { xpAwarded: quest.xpReward, coinsAwarded: quest.coinsReward, alreadyCompleted: false };

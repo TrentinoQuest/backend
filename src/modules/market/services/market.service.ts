@@ -74,15 +74,15 @@ export async function purchaseOffer(playerId: string, offerId: string): Promise<
     throw new ConflictError('Offerta esaurita', 'OFFER_SOLD_OUT');
   }
 
-  // Decrementa atomicamente coins e remaining con condizione per evitare race condition
+  // Decrementa atomicamente totalPoints con condizione per evitare race condition
   const updatedPlayer = await Player.findOneAndUpdate(
-    { _id: playerId, coins: { $gte: offer.pointsCost } },
-    { $inc: { coins: -offer.pointsCost } },
+    { _id: playerId, totalPoints: { $gte: offer.pointsCost } },
+    { $inc: { totalPoints: -offer.pointsCost } },
     { returnDocument: 'after' },
   );
 
   if (!updatedPlayer) {
-    throw new BadRequestError('Coins insufficienti', 'INSUFFICIENT_COINS');
+    throw new BadRequestError('Punti insufficienti', 'INSUFFICIENT_COINS');
   }
 
   // Decrementa remaining solo se non è null
@@ -94,7 +94,7 @@ export async function purchaseOffer(playerId: string, offerId: string): Promise<
     );
     if (!updated) {
       // Race condition: offerta esaurita nel frattempo, rimborsa il player
-      await Player.updateOne({ _id: playerId }, { $inc: { coins: offer.pointsCost } });
+      await Player.updateOne({ _id: playerId }, { $inc: { totalPoints: offer.pointsCost } });
       throw new ConflictError('Offerta esaurita', 'OFFER_SOLD_OUT');
     }
   }
