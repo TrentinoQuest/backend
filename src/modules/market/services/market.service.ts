@@ -61,7 +61,7 @@ export async function purchaseOffer(playerId: string, offerId: string): Promise<
   const updatedPlayer = await Player.findOneAndUpdate(
     { _id: playerId, coins: { $gte: offer.pointsCost } },
     { $inc: { coins: -offer.pointsCost } },
-    { new: true },
+    { returnDocument: 'after' },
   );
 
   if (!updatedPlayer) {
@@ -73,7 +73,7 @@ export async function purchaseOffer(playerId: string, offerId: string): Promise<
     const updated = await Offer.findOneAndUpdate(
       { _id: offerId, status: OfferStatus.ACTIVE, remaining: { $gt: 0 } },
       { $inc: { remaining: -1 } },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!updated) {
       // Race condition: offerta esaurita nel frattempo, rimborsa il player

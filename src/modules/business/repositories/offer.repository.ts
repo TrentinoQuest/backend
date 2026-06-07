@@ -59,7 +59,7 @@ export async function updateOffer(
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Offer.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+  return Offer.findByIdAndUpdate(id, data, { returnDocument: 'after', runValidators: true });
 }
 
 /**
@@ -69,5 +69,5 @@ export async function archiveOffer(id: string): Promise<IOffer | null> {
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Offer.findByIdAndUpdate(id, { status: OfferStatus.ARCHIVED }, { new: true });
+  return Offer.findByIdAndUpdate(id, { status: OfferStatus.ARCHIVED }, { returnDocument: 'after' });
 }

@@ -102,7 +102,7 @@ export async function setQuestPlacement(
       qrToken,
       placementStatus: PlacementStatus.PLACED,
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   );
 }
 
@@ -118,7 +118,11 @@ export async function updateQuestExactPosition(
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return PrimaryQuest.findByIdAndUpdate(id, { exactPosition }, { new: true, runValidators: true });
+  return PrimaryQuest.findByIdAndUpdate(
+    id,
+    { exactPosition },
+    { returnDocument: 'after', runValidators: true },
+  );
 }
 
 /**
@@ -133,7 +137,7 @@ export async function setQuestReported(id: string): Promise<IPrimaryQuest | null
   return PrimaryQuest.findByIdAndUpdate(
     id,
     { placementStatus: PlacementStatus.REPORTED },
-    { new: true },
+    { returnDocument: 'after' },
   );
 }
 
@@ -152,7 +156,7 @@ export async function setQuestPlacedPosition(
   return PrimaryQuest.findByIdAndUpdate(
     id,
     { exactPosition, placementStatus: PlacementStatus.PLACED },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   );
 }
 
@@ -163,5 +167,5 @@ export async function setQuestQrToken(id: string, qrToken: string): Promise<IPri
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return PrimaryQuest.findByIdAndUpdate(id, { qrToken }, { new: true });
+  return PrimaryQuest.findByIdAndUpdate(id, { qrToken }, { returnDocument: 'after' });
 }

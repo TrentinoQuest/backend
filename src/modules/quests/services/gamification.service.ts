@@ -141,7 +141,7 @@ export async function checkStreakLazy(playerId: string): Promise<StreakLazyResul
   if (update.shieldConsumed) changes.streakShieldActive = false;
   if (update.streakBroken) changes.currentStreak = 0;
 
-  const updated = await Player.findByIdAndUpdate(playerId, changes, { new: true });
+  const updated = await Player.findByIdAndUpdate(playerId, changes, { returnDocument: 'after' });
   return {
     player: updated ?? player,
     shieldConsumed: update.shieldConsumed,

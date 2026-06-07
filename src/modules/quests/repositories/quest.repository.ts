@@ -237,7 +237,7 @@ export async function updateQuest(id: string, input: UpdateQuestInput): Promise<
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Quest.findByIdAndUpdate(id, input, { new: true, runValidators: true });
+  return Quest.findByIdAndUpdate(id, input, { returnDocument: 'after', runValidators: true });
 }
 
 /**
@@ -247,7 +247,7 @@ export async function setQuestStatus(id: string, status: QuestStatus): Promise<I
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Quest.findByIdAndUpdate(id, { status }, { new: true });
+  return Quest.findByIdAndUpdate(id, { status }, { returnDocument: 'after' });
 }
 
 /**

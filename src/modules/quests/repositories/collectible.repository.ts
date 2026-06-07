@@ -88,7 +88,7 @@ export async function updateCollectible(
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Collectible.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+  return Collectible.findByIdAndUpdate(id, data, { returnDocument: 'after', runValidators: true });
 }
 
 /**
@@ -101,5 +101,9 @@ export async function archiveCollectible(id: string): Promise<ICollectible | nul
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Collectible.findByIdAndUpdate(id, { status: CollectibleStatus.ARCHIVED }, { new: true });
+  return Collectible.findByIdAndUpdate(
+    id,
+    { status: CollectibleStatus.ARCHIVED },
+    { returnDocument: 'after' },
+  );
 }

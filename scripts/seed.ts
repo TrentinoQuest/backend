@@ -1024,7 +1024,7 @@ async function seedValleys(): Promise<void> {
     await Valley.findOneAndUpdate(
       { name: v.name },
       { name: v.name, polygon: v.polygon },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
   }
   logger.info({ count: valleys.length }, 'Valli seedate da dati PAT');

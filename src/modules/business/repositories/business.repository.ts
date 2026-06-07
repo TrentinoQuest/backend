@@ -84,7 +84,7 @@ export async function updateBusinessProfile(
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Business.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+  return Business.findByIdAndUpdate(id, data, { returnDocument: 'after', runValidators: true });
 }
 
 /**
@@ -97,5 +97,5 @@ export async function setBusinessApprovalStatus(
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Business.findByIdAndUpdate(id, { approvalStatus: status }, { new: true });
+  return Business.findByIdAndUpdate(id, { approvalStatus: status }, { returnDocument: 'after' });
 }

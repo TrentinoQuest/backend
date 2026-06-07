@@ -54,7 +54,7 @@ export async function runLeagueWeeklyReset(): Promise<void> {
       const prevSeason = await LeagueSeason.findOneAndUpdate(
         { active: true },
         { active: false },
-        { session, new: true },
+        { session, returnDocument: 'after' },
       );
 
       if (prevSeason) {
