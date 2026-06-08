@@ -3,10 +3,13 @@
  *
  * Popola il database con dati di esempio coerenti con il dominio:
  * - Utenti: 1 admin, 1 operatore, 1 business approvato
- * - 12 player con dati gamification
+ * - 150 player distribuiti su 5 leghe piene (30 per ognuno dei 5 tier)
+ * - Completamenti reali su quest reali per ogni player, da cui derivano
+ *   XP, livello, punti totali, streak e weeklyXp di lega
+ * - Una rete di amicizie (accettate e pendenti) tra i player
  * - 150 quest principali + 150 collezionabili (da trentino-quest-seed-data.json)
  * - 300 quest secondarie (da trentino-quest-seed-data.json)
- * - Domande lore, valli PAT, lega iniziale
+ * - Domande lore, valli PAT, leghe popolate
  *
  * Utilizzo:
  *   npm run seed             (aggiunge dati al DB esistente, idempotente)
@@ -34,13 +37,23 @@ import { Admin, Player, UserRole, Maintenance, Business } from '../src/database/
 import { Offer } from '../src/database/models/Offer.model';
 import { LoreQuestion, LoreAnswer } from '../src/database/models/LoreQuestion.model';
 import { Valley } from '../src/database/models/Valley.model';
-import { LeagueSeason, LeagueMembership, LeagueTier } from '../src/database/models/League.model';
+import {
+  LeagueSeason,
+  LeagueMembership,
+  LeagueTier,
+  TIER_ORDER,
+} from '../src/database/models/League.model';
 import { DailyQuestAssignment } from '../src/database/models/DailyQuest.model';
 import { Kudos } from '../src/database/models/Kudos.model';
 import { CoopChallenge } from '../src/database/models/CoopChallenge.model';
 import { Coupon } from '../src/database/models/Coupon.model';
-import { Friendship } from '../src/database/models/Friendship.model';
+import { Friendship, FriendshipStatus } from '../src/database/models/Friendship.model';
 import { BusinessType, BusinessApprovalStatus } from '@trentino-quest/shared-types';
+import {
+  XP_PRIMARY_QUEST,
+  XP_SECONDARY_QUEST,
+  computeLevelFromXp,
+} from '../src/config/gamification';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -332,101 +345,422 @@ async function seedBusinessWithOffers(): Promise<void> {
   }
 }
 
-// ── Player ─────────────────────────────────────────────────────────────────
-
-const PLAYER_DATA = [
-  { email: 'marco.bianchi@seed.tq', username: 'marco_bianchi' },
-  { email: 'giulia.ferrari@seed.tq', username: 'giulia_ferrari' },
-  { email: 'luca.rossi@seed.tq', username: 'luca_rossi' },
-  { email: 'sara.romano@seed.tq', username: 'sara_romano' },
-  { email: 'andrea.conti@seed.tq', username: 'andrea_conti' },
-  { email: 'chiara.mancini@seed.tq', username: 'chiara_mancini' },
-  { email: 'davide.gallo@seed.tq', username: 'davide_gallo' },
-  { email: 'elena.ricci@seed.tq', username: 'elena_ricci' },
-  { email: 'matteo.esposito@seed.tq', username: 'matteo_esposito' },
-  { email: 'sofia.colombo@seed.tq', username: 'sofia_colombo' },
-  { email: 'roberto.bruno@seed.tq', username: 'roberto_bruno' },
-  { email: 'valentina.greco@seed.tq', username: 'valentina_greco' },
-];
-
-async function seedPlayers(): Promise<Types.ObjectId[]> {
-  const ids: Types.ObjectId[] = [];
-  for (const data of PLAYER_DATA) {
-    let player = await Player.findOne({ email: data.email });
-    if (!player) {
-      player = await Player.create({ ...data, password: 'PlayerPass123' });
-    }
-    ids.push(player._id);
-  }
-  logger.info({ playerCount: ids.length }, 'Player inseriti');
-  return ids;
-}
-
-// ── Dati gamification demo ─────────────────────────────────────────────────
+// ── RNG deterministico ──────────────────────────────────────────────────────
 
 /**
- * Imposta dati di gamification realistici su tre player per la demo.
- * Idempotente: salta i player che hanno già xp > 0.
+ * Generatore pseudo-casuale deterministico (mulberry32).
+ * Usato per rendere il seed riproducibile: a parità di --clean si ottengono
+ * sempre gli stessi completamenti, progressi e amicizie.
  */
-async function seedGamificationData(playerIds: Types.ObjectId[]): Promise<void> {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(0, 0, 0, 0);
+function makeRng(seed: number): () => number {
+  let a = seed >>> 0;
+  return function next(): number {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-  const demos: {
-    idx: number;
-    xp: number;
-    level: number;
-    currentStreak: number;
-    longestStreak: number;
-    streakShieldActive: boolean;
-    lastQuestDate: Date;
-  }[] = [
-    {
-      idx: 0,
-      xp: 650,
-      level: 3,
-      currentStreak: 5,
-      longestStreak: 12,
-      streakShieldActive: false,
-      lastQuestDate: yesterday,
-    },
-    {
-      idx: 1,
-      xp: 350,
-      level: 2,
-      currentStreak: 3,
-      longestStreak: 7,
-      streakShieldActive: false,
-      lastQuestDate: yesterday,
-    },
-    {
-      idx: 2,
-      xp: 200,
-      level: 2,
-      currentStreak: 7,
-      longestStreak: 7,
-      streakShieldActive: true,
-      lastQuestDate: yesterday,
-    },
+// ── Player ─────────────────────────────────────────────────────────────────
+
+interface PlayerSeed {
+  email: string;
+  username: string;
+  tier: LeagueTier;
+}
+
+interface SeededPlayer extends PlayerSeed {
+  id: Types.ObjectId;
+}
+
+/** Numero di player per lega (girone). */
+const PLAYERS_PER_LEAGUE = 30;
+
+/** Una lega piena per ognuno dei 5 tier → 150 player totali. */
+const TOTAL_PLAYERS = PLAYERS_PER_LEAGUE * TIER_ORDER.length;
+
+const FIRST_NAMES = [
+  'alessandro',
+  'francesca',
+  'lorenzo',
+  'martina',
+  'simone',
+  'alice',
+  'federico',
+  'beatrice',
+  'tommaso',
+  'aurora',
+  'riccardo',
+  'giorgia',
+  'nicola',
+  'camilla',
+  'stefano',
+  'federica',
+  'gabriele',
+  'ilaria',
+  'pietro',
+  'noemi',
+  'filippo',
+  'arianna',
+  'edoardo',
+  'caterina',
+  'leonardo',
+  'eleonora',
+  'cristian',
+  'veronica',
+  'daniele',
+  'serena',
+  'michele',
+  'marta',
+  'antonio',
+  'silvia',
+  'paolo',
+  'anna',
+  'giacomo',
+  'laura',
+  'vittorio',
+  'rebecca',
+];
+
+const LAST_NAMES = [
+  'moretti',
+  'barbieri',
+  'fontana',
+  'santoro',
+  'marini',
+  'rizzo',
+  'caruso',
+  'ferraro',
+  'galli',
+  'martini',
+  'leone',
+  'longo',
+  'gentile',
+  'martinelli',
+  'vitale',
+  'lombardi',
+  'serra',
+  'coppola',
+  'deluca',
+  'villa',
+  'marchetti',
+  'parisi',
+  'costa',
+  'giordano',
+  'rinaldi',
+  'sala',
+  'fabbri',
+  'testa',
+  'grassi',
+  'pellegrini',
+];
+
+/**
+ * Costruisce la lista dei player da seedare:
+ * - 12 player "storici" con nomi fissi (compatibilità con eventuali riferimenti)
+ * - player generati deterministicamente fino a riempire una lega da 30 per tier
+ * I player vengono assegnati a blocchi di 30 ai tier in ordine
+ * (porfido, marmo, arenaria, granito, dolomiti).
+ */
+function buildPlayerSeeds(): PlayerSeed[] {
+  const named = [
+    'marco_bianchi',
+    'giulia_ferrari',
+    'luca_rossi',
+    'sara_romano',
+    'andrea_conti',
+    'chiara_mancini',
+    'davide_gallo',
+    'elena_ricci',
+    'matteo_esposito',
+    'sofia_colombo',
+    'roberto_bruno',
+    'valentina_greco',
   ];
 
-  let updated = 0;
-  for (const demo of demos) {
-    const player = await Player.findById(playerIds[demo.idx]);
-    if (!player || player.xp > 0) continue;
-    await Player.findByIdAndUpdate(playerIds[demo.idx], {
-      xp: demo.xp,
-      level: demo.level,
-      currentStreak: demo.currentStreak,
-      longestStreak: demo.longestStreak,
-      streakShieldActive: demo.streakShieldActive,
-      lastQuestDate: demo.lastQuestDate,
-    });
-    updated++;
+  const usernames = new Set(named);
+  const all: string[] = [...named];
+
+  let i = 0;
+  while (all.length < TOTAL_PLAYERS) {
+    const first = FIRST_NAMES[i % FIRST_NAMES.length];
+    const last = LAST_NAMES[(i * 7 + 3) % LAST_NAMES.length];
+    let candidate = `${first}_${last}`;
+    let suffix = 2;
+    while (usernames.has(candidate)) {
+      candidate = `${first}_${last}${suffix}`;
+      suffix++;
+    }
+    usernames.add(candidate);
+    all.push(candidate);
+    i++;
   }
 
-  logger.info({ updated }, 'Dati gamification demo impostati');
+  return all.map((username, idx) => ({
+    username,
+    email: `${username.replace(/_/g, '.')}@seed.tq`,
+    tier: TIER_ORDER[Math.floor(idx / PLAYERS_PER_LEAGUE)],
+  }));
+}
+
+async function seedPlayers(): Promise<SeededPlayer[]> {
+  const seeds = buildPlayerSeeds();
+  const players: SeededPlayer[] = [];
+  for (const seed of seeds) {
+    let player = await Player.findOne({ email: seed.email });
+    if (!player) {
+      player = await Player.create({
+        email: seed.email,
+        username: seed.username,
+        password: 'PlayerPass123',
+        currentLeagueTier: seed.tier,
+        onboardingCompleted: true,
+      });
+    } else if (player.currentLeagueTier !== String(seed.tier)) {
+      await Player.updateOne({ _id: player._id }, { currentLeagueTier: seed.tier });
+    }
+    players.push({ ...seed, id: player._id });
+  }
+  logger.info({ playerCount: players.length }, 'Player inseriti');
+  return players;
+}
+
+// ── Completamenti e progressi reali ──────────────────────────────────────────
+
+interface QuestLite {
+  _id: Types.ObjectId;
+  basePoints: number;
+  point: { type: 'Point'; coordinates: [number, number] } | null;
+  isPrimary: boolean;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Chiave "giorno" (epoch day) di una data, per il calcolo delle streak. */
+function epochDay(d: Date): number {
+  return Math.floor(d.getTime() / DAY_MS);
+}
+
+/**
+ * Crea completamenti reali su quest reali per ogni player e ne deriva i
+ * progressi (xp, livello, punti totali, streak, lastQuestDate) esattamente
+ * come farebbe il flusso di completamento applicativo.
+ *
+ * Ritorna una mappa playerId -> weeklyXp (XP guadagnati nella settimana
+ * corrente) usata poi per popolare le membership di lega.
+ *
+ * Idempotente: i player che hanno già completamenti vengono saltati nella
+ * generazione, ma il loro weeklyXp viene comunque ricalcolato dal DB.
+ */
+async function seedCompletionsAndProgress(players: SeededPlayer[]): Promise<Map<string, number>> {
+  const rng = makeRng(20240608);
+  const now = new Date();
+  const weekStart = getMondayOfWeek(now);
+  const daysSinceMonday = Math.max(0, Math.floor((now.getTime() - weekStart.getTime()) / DAY_MS));
+
+  const primaryDocs = await PrimaryQuest.find({}, '_id basePoints exactPosition searchArea').lean();
+  const secondaryDocs = await SecondaryQuest.find({}, '_id basePoints position').lean();
+
+  const pool: QuestLite[] = [
+    ...primaryDocs.map((q) => ({
+      _id: q._id,
+      basePoints: q.basePoints,
+      point: q.exactPosition ?? q.searchArea ?? null,
+      isPrimary: true,
+    })),
+    ...secondaryDocs.map((q) => ({
+      _id: q._id,
+      basePoints: q.basePoints,
+      point: q.position ?? null,
+      isPrimary: false,
+    })),
+  ].filter((q) => q.point !== null);
+
+  const primaryIds = new Set(primaryDocs.map((q) => String(q._id)));
+  const weeklyXpMap = new Map<string, number>();
+
+  if (pool.length === 0) {
+    logger.warn('Nessuna quest disponibile: impossibile creare completamenti');
+    return weeklyXpMap;
+  }
+
+  let totalCompletions = 0;
+  let playersWithProgress = 0;
+
+  for (const player of players) {
+    const already = await Completion.exists({ playerId: player.id });
+    if (already) {
+      // Idempotenza: ricalcola solo il weeklyXp dai completamenti esistenti
+      const weekDocs = await Completion.find(
+        { playerId: player.id, completedAt: { $gte: weekStart } },
+        'questId',
+      ).lean();
+      const weeklyXp = weekDocs.reduce(
+        (sum, c) =>
+          sum + (primaryIds.has(String(c.questId)) ? XP_PRIMARY_QUEST : XP_SECONDARY_QUEST),
+        0,
+      );
+      weeklyXpMap.set(String(player.id), weeklyXp);
+      continue;
+    }
+
+    // Numero di quest completate da questo player (8..45)
+    const completionCount = Math.min(pool.length, 8 + Math.floor(rng() * 38));
+    // Di queste, alcune nella settimana corrente (1..9) per popolare la lega
+    const weeklyCount = Math.min(completionCount, 1 + Math.floor(rng() * 9));
+
+    // Campiona senza ripetizioni dal pool (vincolo unique playerId+questId)
+    const shuffled = [...pool].sort(() => rng() - 0.5).slice(0, completionCount);
+
+    const completions: {
+      playerId: Types.ObjectId;
+      questId: Types.ObjectId;
+      pointsAwarded: number;
+      position: { type: 'Point'; coordinates: [number, number] };
+      completedAt: Date;
+    }[] = [];
+
+    let xp = 0;
+    let totalPoints = 0;
+    const dayKeys = new Set<number>();
+
+    shuffled.forEach((quest, idx) => {
+      const inThisWeek = idx < weeklyCount;
+      const dayOffset = inThisWeek
+        ? Math.floor(rng() * (daysSinceMonday + 1)) // 0..oggi della settimana corrente
+        : 7 + Math.floor(rng() * 28); // 7..34 giorni fa (settimane precedenti)
+      const hour = 8 + Math.floor(rng() * 12);
+      const minute = Math.floor(rng() * 60);
+      const completedAt = new Date(now.getTime() - dayOffset * DAY_MS);
+      completedAt.setHours(hour, minute, 0, 0);
+
+      const xpAwarded = quest.isPrimary ? XP_PRIMARY_QUEST : XP_SECONDARY_QUEST;
+      const coins = quest.isPrimary ? 25 : 10;
+      xp += xpAwarded;
+      // totalPoints replica il flusso reale: basePoints + coins per completamento
+      totalPoints += quest.basePoints + coins;
+      dayKeys.add(epochDay(completedAt));
+
+      completions.push({
+        playerId: player.id,
+        questId: quest._id,
+        pointsAwarded: quest.basePoints,
+        position: quest.point as { type: 'Point'; coordinates: [number, number] },
+        completedAt,
+      });
+    });
+
+    // Streak reali derivate dai giorni distinti di attività
+    const sortedDays = [...dayKeys].sort((x, y) => x - y);
+    let longestStreak = 0;
+    let run = 0;
+    for (let k = 0; k < sortedDays.length; k++) {
+      run = k > 0 && sortedDays[k] === sortedDays[k - 1] + 1 ? run + 1 : 1;
+      if (run > longestStreak) longestStreak = run;
+    }
+    // currentStreak: conta all'indietro dall'ultimo giorno di attività solo se
+    // è oggi o ieri (altrimenti la streak è considerata interrotta)
+    const today = epochDay(now);
+    const lastDay = sortedDays[sortedDays.length - 1];
+    let currentStreak = 0;
+    if (lastDay === today || lastDay === today - 1) {
+      currentStreak = 1;
+      for (let k = sortedDays.length - 1; k > 0; k--) {
+        if (sortedDays[k] === sortedDays[k - 1] + 1) currentStreak++;
+        else break;
+      }
+    }
+
+    const lastCompletion = completions.reduce((latest, c) =>
+      c.completedAt > latest.completedAt ? c : latest,
+    );
+    const lastQuestDate = new Date(lastCompletion.completedAt);
+    lastQuestDate.setHours(0, 0, 0, 0);
+
+    const weeklyXp = completions
+      .filter((c) => c.completedAt >= weekStart)
+      .reduce(
+        (sum, c) =>
+          sum + (primaryIds.has(String(c.questId)) ? XP_PRIMARY_QUEST : XP_SECONDARY_QUEST),
+        0,
+      );
+
+    await Completion.insertMany(completions);
+    await Player.updateOne(
+      { _id: player.id },
+      {
+        xp,
+        level: computeLevelFromXp(xp).level,
+        totalPoints,
+        currentStreak,
+        longestStreak,
+        lastQuestDate,
+        streakShieldActive: currentStreak >= 7 && rng() < 0.5,
+      },
+    );
+
+    weeklyXpMap.set(String(player.id), weeklyXp);
+    totalCompletions += completions.length;
+    playersWithProgress++;
+  }
+
+  logger.info(
+    { playersWithProgress, totalCompletions },
+    'Completamenti reali e progressi player creati',
+  );
+  return weeklyXpMap;
+}
+
+// ── Amicizie ─────────────────────────────────────────────────────────────────
+
+/**
+ * Crea una rete di amicizie tra i player:
+ * - hub di amicizie accettate attorno ai primi player di ciascuna lega
+ * - coppie accettate casuali (anche cross-lega)
+ * - alcune richieste pendenti verso il primo player, per testare gli inviti
+ * Idempotente: salta le coppie già collegate (in qualsiasi direzione).
+ */
+async function seedFriendships(players: SeededPlayer[]): Promise<void> {
+  const rng = makeRng(99);
+  const requests: { a: number; b: number; status: FriendshipStatus }[] = [];
+
+  // Hub lega PORFIDO: player 0 amico dei successivi 8
+  for (let i = 1; i <= 8; i++) requests.push({ a: 0, b: i, status: 'accepted' });
+  // Hub lega MARMO: player 30 amico dei successivi 6
+  if (players.length > PLAYERS_PER_LEAGUE) {
+    for (let i = 1; i <= 6; i++) {
+      requests.push({ a: PLAYERS_PER_LEAGUE, b: PLAYERS_PER_LEAGUE + i, status: 'accepted' });
+    }
+  }
+  // Coppie accettate casuali (anche cross-lega)
+  for (let k = 0; k < 30; k++) {
+    const a = Math.floor(rng() * players.length);
+    const b = Math.floor(rng() * players.length);
+    if (a !== b) requests.push({ a, b, status: 'accepted' });
+  }
+  // Richieste pendenti verso il player 0 (per testare la coda inviti)
+  requests.push({ a: 9, b: 0, status: 'pending' });
+  requests.push({ a: 10, b: 0, status: 'pending' });
+  requests.push({ a: 0, b: 11, status: 'pending' });
+
+  let created = 0;
+  for (const { a, b, status } of requests) {
+    const requesterId = players[a].id;
+    const recipientId = players[b].id;
+    const exists = await Friendship.findOne({
+      $or: [
+        { requesterId, recipientId },
+        { requesterId: recipientId, recipientId: requesterId },
+      ],
+    });
+    if (exists) continue;
+    await Friendship.create({ requesterId, recipientId, status });
+    created++;
+  }
+
+  logger.info({ created }, 'Amicizie create');
 }
 
 // ── Domande lore ──────────────────────────────────────────────────────────
@@ -821,7 +1155,18 @@ function getSundayOfWeek(monday: Date): Date {
   return d;
 }
 
-async function seedLeague(playerIds: Types.ObjectId[]): Promise<void> {
+/**
+ * Crea la stagione attiva e popola le membership di lega.
+ *
+ * I player vengono raggruppati per tier e suddivisi in gironi da
+ * PLAYERS_PER_LEAGUE (come fa il job di reset settimanale), così ogni tier
+ * con 30 player forma una lega piena. Il weeklyXp di ciascuna membership
+ * proviene dai completamenti reali della settimana corrente.
+ */
+async function seedLeague(
+  players: SeededPlayer[],
+  weeklyXpMap: Map<string, number>,
+): Promise<void> {
   const now = new Date();
   const weekStart = getMondayOfWeek(now);
   const weekEnd = getSundayOfWeek(weekStart);
@@ -835,24 +1180,41 @@ async function seedLeague(playerIds: Types.ObjectId[]): Promise<void> {
     logger.info("Stagione lega gia' attiva, skip creazione");
   }
 
-  // Crea membership per ogni player che non ne ha già una
+  // Raggruppa i player per tier
+  const byTier = new Map<LeagueTier, SeededPlayer[]>();
+  for (const p of players) {
+    const list = byTier.get(p.tier) ?? [];
+    list.push(p);
+    byTier.set(p.tier, list);
+  }
+
+  // Forma gironi da PLAYERS_PER_LEAGUE per ogni tier
   let created = 0;
-  const groupId = 'seed-group-1';
-  for (const playerId of playerIds) {
-    const existing = await LeagueMembership.findOne({ playerId, seasonId: season._id });
-    if (!existing) {
-      await LeagueMembership.create({
-        playerId,
-        seasonId: season._id,
-        groupId,
-        tier: LeagueTier.PORFIDO,
-        weeklyXp: 0,
-      });
-      created++;
+  let groups = 0;
+  for (const [tier, tierPlayers] of byTier) {
+    for (let i = 0; i < tierPlayers.length; i += PLAYERS_PER_LEAGUE) {
+      const chunk = tierPlayers.slice(i, i + PLAYERS_PER_LEAGUE);
+      const groupId = `seed-${tier}-${Math.floor(i / PLAYERS_PER_LEAGUE) + 1}`;
+      groups++;
+      for (const p of chunk) {
+        const existing = await LeagueMembership.findOne({
+          playerId: p.id,
+          seasonId: season._id,
+        });
+        if (existing) continue;
+        await LeagueMembership.create({
+          playerId: p.id,
+          seasonId: season._id,
+          groupId,
+          tier,
+          weeklyXp: weeklyXpMap.get(String(p.id)) ?? 0,
+        });
+        created++;
+      }
     }
   }
 
-  logger.info({ created }, 'Membership lega create');
+  logger.info({ created, groups }, 'Membership lega create');
 }
 
 // ── Punto di ingresso ──────────────────────────────────────────────────────
@@ -872,13 +1234,16 @@ async function run(): Promise<void> {
     await seedOperatorUser();
     await seedBusinessWithOffers();
 
-    const playerIds = await seedPlayers();
-    await seedGamificationData(playerIds);
+    const players = await seedPlayers();
 
     await seedLoreQuestions();
     await seedValleys();
     await seedQuestsFromData();
-    await seedLeague(playerIds);
+
+    // I completamenti richiedono le quest già seedate
+    const weeklyXpMap = await seedCompletionsAndProgress(players);
+    await seedLeague(players, weeklyXpMap);
+    await seedFriendships(players);
 
     logger.info('Seed completato con successo');
   } catch (err) {
