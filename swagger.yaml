@@ -2121,7 +2121,7 @@ paths:
         in metri. Utilizzato per il radar di ricerca.
         Solo per quest di tipo primary attive.
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -3474,7 +3474,7 @@ paths:
         socialScore = completamenti_primary × 2 + completamenti_secondary × 1.
         Ordinata per socialScore decrescente.
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
         '200':
           description: Classifica sociale
@@ -3493,7 +3493,7 @@ paths:
       summary: Lista amici
       description: Amicizie in stato accepted del player autenticato.
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
         '200':
           description: Lista amici
@@ -3516,7 +3516,7 @@ paths:
       tags: [social]
       summary: Invia richiesta di amicizia
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -3560,7 +3560,7 @@ paths:
       summary: Richieste di amicizia ricevute
       description: Richieste pending ricevute dal player autenticato.
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
         '200':
           description: Richieste pending
@@ -3584,7 +3584,7 @@ paths:
       tags: [social]
       summary: Accetta richiesta di amicizia
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -3614,7 +3614,7 @@ paths:
       tags: [social]
       summary: Rifiuta richiesta di amicizia
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -3644,7 +3644,7 @@ paths:
       tags: [social]
       summary: Rimuovi amico
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
