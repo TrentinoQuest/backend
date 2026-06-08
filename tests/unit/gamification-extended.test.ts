@@ -64,28 +64,28 @@ describe('applyGamification — coinsAwarded', () => {
 
 // ── coins del player aggiornato ───────────────────────────────────────────────
 
-describe('applyGamification — aggiornamento coins player', () => {
-  it('incrementa il campo coins del player dopo quest secondaria', async () => {
+describe('applyGamification — aggiornamento totalPoints player', () => {
+  it('incrementa il campo totalPoints del player dopo quest secondaria', async () => {
     const playerId = await createTestPlayer('f');
-    await Player.findByIdAndUpdate(playerId, { coins: 100 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
     const result = await applyGamification(playerId, QuestType.SECONDARY);
     const updated = await Player.findById(playerId);
-    expect(updated?.coins).toBe(100 + result.coinsAwarded);
+    expect(updated?.totalPoints).toBe(100 + result.coinsAwarded);
   });
 
-  it('incrementa il campo coins del player dopo quest principale', async () => {
+  it('incrementa il campo totalPoints del player dopo quest principale', async () => {
     const playerId = await createTestPlayer('g');
-    await Player.findByIdAndUpdate(playerId, { coins: 50 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 50 });
     const result = await applyGamification(playerId, QuestType.PRIMARY);
     const updated = await Player.findById(playerId);
-    expect(updated?.coins).toBe(50 + result.coinsAwarded);
+    expect(updated?.totalPoints).toBe(50 + result.coinsAwarded);
   });
 
-  it('partendo da 0 monete le coins corrispondono esattamente a coinsAwarded', async () => {
+  it('partendo da 0 i totalPoints corrispondono esattamente a coinsAwarded', async () => {
     const playerId = await createTestPlayer('h');
     const result = await applyGamification(playerId, QuestType.SECONDARY);
     const updated = await Player.findById(playerId);
-    expect(updated?.coins).toBe(result.coinsAwarded);
+    expect(updated?.totalPoints).toBe(result.coinsAwarded);
   });
 });
 

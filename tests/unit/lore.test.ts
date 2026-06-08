@@ -84,13 +84,13 @@ describe('answerDailyQuestion', () => {
     expect(result.explanation).toBeTruthy();
   });
 
-  it('risposta corretta: player riceve 50 coins', async () => {
+  it('risposta corretta: player riceve 50 totalPoints', async () => {
     await seedQuestions(5);
     const playerId = await createPlayer('f');
-    await Player.findByIdAndUpdate(playerId, { coins: 0 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 0 });
     await answerDailyQuestion(playerId, 1);
     const updated = await Player.findById(playerId);
-    expect(updated?.coins).toBe(50);
+    expect(updated?.totalPoints).toBe(50);
   });
 
   it('risposta errata: correct: false e coinsAwarded: 0', async () => {
@@ -101,13 +101,13 @@ describe('answerDailyQuestion', () => {
     expect(result.coinsAwarded).toBe(0);
   });
 
-  it('risposta errata: player non riceve coins', async () => {
+  it('risposta errata: player non riceve totalPoints', async () => {
     await seedQuestions(5);
     const playerId = await createPlayer('h');
-    await Player.findByIdAndUpdate(playerId, { coins: 10 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 10 });
     await answerDailyQuestion(playerId, 0);
     const updated = await Player.findById(playerId);
-    expect(updated?.coins).toBe(10);
+    expect(updated?.totalPoints).toBe(10);
   });
 
   it('seconda risposta nello stesso giorno lancia ConflictError ALREADY_ANSWERED', async () => {

@@ -113,18 +113,18 @@ describe('completeDailyQuest', () => {
     expect(result.alreadyCompleted).toBe(false);
   });
 
-  it('aggiorna xp e coins del player', async () => {
+  it('aggiorna xp e totalPoints del player', async () => {
     const playerId = await createPlayer('g');
     const view = await getDailyQuests(playerId, DailyQuestContext.IN_TRENTINO);
     const questType = view.quests[0].type;
     const beforePlayer = await Player.findById(playerId);
     const xpBefore = beforePlayer?.xp ?? 0;
-    const coinsBefore = beforePlayer?.coins ?? 0;
+    const pointsBefore = beforePlayer?.totalPoints ?? 0;
 
     const result = await completeDailyQuest(playerId, questType);
     const afterPlayer = await Player.findById(playerId);
     expect(afterPlayer?.xp).toBe(xpBefore + result.xpAwarded);
-    expect(afterPlayer?.coins).toBe(coinsBefore + result.coinsAwarded);
+    expect(afterPlayer?.totalPoints).toBe(pointsBefore + result.coinsAwarded);
   });
 
   it('è idempotente: seconda chiamata restituisce alreadyCompleted: true e 0 premi', async () => {

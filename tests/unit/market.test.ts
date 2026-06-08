@@ -73,7 +73,7 @@ describe('purchaseOffer', () => {
     const playerId = await createPlayer('c');
     const bizId = await createBusiness('c');
     const offerId = await createOffer(bizId, 300);
-    await Player.findByIdAndUpdate(playerId, { coins: 100 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
 
     await expect(purchaseOffer(playerId, offerId)).rejects.toMatchObject({
       code: 'INSUFFICIENT_COINS',
@@ -84,7 +84,7 @@ describe('purchaseOffer', () => {
     const playerId = await createPlayer('d');
     const bizId = await createBusiness('d');
     const offerId = await createOffer(bizId, 50, 0);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
 
     await expect(purchaseOffer(playerId, offerId)).rejects.toMatchObject({
       code: 'OFFER_SOLD_OUT',
@@ -95,7 +95,7 @@ describe('purchaseOffer', () => {
     const playerId = await createPlayer('e');
     const bizId = await createBusiness('e');
     const offerId = await createOffer(bizId, 100);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
 
     const couponView = await purchaseOffer(playerId, offerId);
     expect(couponView.token).toBeTruthy();
@@ -110,22 +110,22 @@ describe('purchaseOffer', () => {
     expect(diff).toBeLessThan(fortyEightHours + 5000);
   });
 
-  it('acquisto riuscito: decrementa i coins del player', async () => {
+  it('acquisto riuscito: decrementa i totalPoints del player', async () => {
     const playerId = await createPlayer('f');
     const bizId = await createBusiness('f');
     const offerId = await createOffer(bizId, 150);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
 
     await purchaseOffer(playerId, offerId);
     const updated = await Player.findById(playerId);
-    expect(updated?.coins).toBe(350);
+    expect(updated?.totalPoints).toBe(350);
   });
 
   it("acquisto riuscito: decrementa remaining dell'offerta se non null", async () => {
     const playerId = await createPlayer('g');
     const bizId = await createBusiness('g');
     const offerId = await createOffer(bizId, 50, 10);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
 
     await purchaseOffer(playerId, offerId);
     const offer = await Offer.findById(offerId);
@@ -136,7 +136,7 @@ describe('purchaseOffer', () => {
     const playerId = await createPlayer('h');
     const bizId = await createBusiness('h');
     const offerId = await createOffer(bizId, 50, null);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
 
     await purchaseOffer(playerId, offerId);
     const offer = await Offer.findById(offerId);
@@ -157,7 +157,7 @@ describe('redeemCoupon', () => {
     const playerId = await createPlayer('i');
     const bizId = await createBusiness('i');
     const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
     const couponView = await purchaseOffer(playerId, offerId);
 
     const redeemed = await redeemCoupon(couponView.token);
@@ -169,7 +169,7 @@ describe('redeemCoupon', () => {
     const playerId = await createPlayer('j');
     const bizId = await createBusiness('j');
     const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
     const couponView = await purchaseOffer(playerId, offerId);
 
     await redeemCoupon(couponView.token);
@@ -182,7 +182,7 @@ describe('redeemCoupon', () => {
     const playerId = await createPlayer('k');
     const bizId = await createBusiness('k');
     const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
     const couponView = await purchaseOffer(playerId, offerId);
 
     // Simula scadenza
@@ -210,7 +210,7 @@ describe('getMyCoupons', () => {
     const playerId = await createPlayer('m');
     const bizId = await createBusiness('m');
     const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
     await purchaseOffer(playerId, offerId);
 
     const coupons = await getMyCoupons(playerId);
@@ -222,7 +222,7 @@ describe('getMyCoupons', () => {
     const playerId = await createPlayer('n');
     const bizId = await createBusiness('n');
     const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { coins: 500 });
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
     const couponView = await purchaseOffer(playerId, offerId);
 
     // Simula scadenza
