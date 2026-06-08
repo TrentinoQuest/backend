@@ -147,9 +147,18 @@ export async function getLeagueCurrent(playerId: string): Promise<LeagueCurrentV
   const groupMembers = await LeagueMembership.find({
     seasonId: activeSeason._id,
     groupId: myMembership.groupId,
-  }).populate('playerId', 'username');
+  });
 
   groupMembers.sort((a, b) => b.weeklyXp - a.weeklyXp);
+
+  // Risolvi gli username interrogando direttamente il discriminator Player.
+  // Una populate('playerId', 'username') sul ref 'User' (modello base) NON
+  // restituirebbe lo username: senza la chiave discriminator 'role' nella
+  // proiezione, Mongoose idrata con lo schema base User (privo di username)
+  // e scarta il campo. Stesso approccio di getSocialLeaderboard.
+  const memberIds = groupMembers.map((m) => m.playerId);
+  const players = await Player.find({ _id: { $in: memberIds } }).select('_id username');
+  const usernameById = new Map(players.map((p) => [String(p._id), p.username]));
 
   const friendships = await Friendship.find({
     $or: [
@@ -164,12 +173,11 @@ export async function getLeagueCurrent(playerId: string): Promise<LeagueCurrentV
   );
 
   const leaderboard = groupMembers.map((m, i) => {
-    const player = m.playerId as unknown as { _id: unknown; username: string };
-    const pid = String(player._id);
+    const pid = String(m.playerId);
     return {
       rank: i + 1,
       playerId: pid,
-      username: player.username,
+      username: usernameById.get(pid) ?? '',
       weeklyXp: m.weeklyXp,
       isCurrentPlayer: pid === playerId,
       isFriend: friendIds.has(pid),

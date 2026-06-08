@@ -79,6 +79,32 @@ describe('getLeagueCurrent', () => {
     expect(xpValues).toEqual([...xpValues].sort((a, b) => b - a));
   });
 
+  it('include lo username reale in ogni entry del leaderboard', async () => {
+    const seasonId = await createActiveSeason();
+    const ts = Date.now() + 'u1';
+    const username = `lp${ts}`;
+    const { user } = await registerPlayer({
+      email: `league${ts}@test.com`,
+      password: 'Password123',
+      username,
+    });
+    const playerId = user.id as string;
+
+    await LeagueMembership.create({
+      playerId,
+      seasonId,
+      groupId: 'group-username',
+      tier: LeagueTier.PORFIDO,
+      weeklyXp: 42,
+    });
+
+    const view = await getLeagueCurrent(playerId);
+    const entry = view.leaderboard.find((e) => e.playerId === playerId);
+    expect(entry?.username).toBe(username);
+    // Nessuna entry deve avere username vuoto/mancante
+    expect(view.leaderboard.every((e) => e.username.length > 0)).toBe(true);
+  });
+
   it('il player corrente è marcato come isCurrentPlayer nel leaderboard', async () => {
     const seasonId = await createActiveSeason();
     const playerId = await createPlayer('d');
