@@ -30,7 +30,7 @@ export async function purchaseOfferHandler(
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const coupon = await purchaseOffer(String(req.user._id), String(req.params.offerId));
-    res.status(201).json({ data: coupon });
+    res.status(201).json(coupon);
   } catch (err) {
     next(err);
   }
@@ -44,7 +44,7 @@ export async function getMyCouponsHandler(
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const coupons = await getMyCoupons(String(req.user._id));
-    res.status(200).json({ data: coupons });
+    res.status(200).json(coupons);
   } catch (err) {
     next(err);
   }
@@ -58,7 +58,7 @@ export async function getRedeemInfoHandler(
 ): Promise<void> {
   try {
     const result = await getRedeemInfo(String(req.params.token));
-    res.status(200).json({ data: result });
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }
@@ -72,7 +72,7 @@ export async function redeemCouponHandler(
 ): Promise<void> {
   try {
     const coupon = await redeemCoupon(String(req.params.token));
-    res.status(200).json({ data: coupon });
+    res.status(200).json(coupon);
   } catch (err) {
     next(err);
   }

@@ -237,8 +237,8 @@ export async function getValleyProgressHandler(
 ): Promise<void> {
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
-    const data = await getValleyProgress(String(req.user._id));
-    res.status(200).json({ data });
+    const progress = await getValleyProgress(String(req.user._id));
+    res.status(200).json(progress);
   } catch (err) {
     next(err);
   }

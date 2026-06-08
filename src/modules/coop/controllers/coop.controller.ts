@@ -34,7 +34,7 @@ export async function createCoopChallengeHandler(
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const { partnerId, type } = createChallengeSchema.parse(req.body);
     const challenge = await createCoopChallenge(String(req.user._id), partnerId, type);
-    res.status(201).json({ data: challenge });
+    res.status(201).json(challenge);
   } catch (err) {
     next(err);
   }
@@ -48,7 +48,7 @@ export async function getActiveChallengesHandler(
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const challenges = await getActiveChallenges(String(req.user._id));
-    res.status(200).json({ data: challenges });
+    res.status(200).json(challenges);
   } catch (err) {
     next(err);
   }
@@ -62,7 +62,7 @@ export async function getChallengeByIdHandler(
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const challenge = await getChallengeById(String(req.params.id), String(req.user._id));
-    res.status(200).json({ data: challenge });
+    res.status(200).json(challenge);
   } catch (err) {
     next(err);
   }
@@ -77,7 +77,7 @@ export async function addProgressHandler(
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
     const { value } = progressSchema.parse(req.body);
     const challenge = await addProgress(String(req.params.id), String(req.user._id), value);
-    res.status(200).json({ data: challenge });
+    res.status(200).json(challenge);
   } catch (err) {
     next(err);
   }
