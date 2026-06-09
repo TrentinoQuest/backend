@@ -18,6 +18,19 @@ const KUDOS_MESSAGES: Record<string, (username: string) => string> = {
   star: (u) => `${u} ti ha assegnato una stella alpina!`,
 };
 
+/**
+ * Verifica che due player abbiano un'amicizia accettata.
+ */
+async function areFriends(a: string, b: string): Promise<boolean> {
+  const friendship = await Friendship.findOne({
+    $or: [
+      { requesterId: a, recipientId: b, status: 'accepted' },
+      { requesterId: b, recipientId: a, status: 'accepted' },
+    ],
+  });
+  return !!friendship;
+}
+
 export async function sendKudos(
   fromPlayerId: string,
   toPlayerId: string,
@@ -28,6 +41,24 @@ export async function sendKudos(
   if (fromPlayerId === toPlayerId)
     throw new BadRequestError('Non puoi mandare kudos a te stesso', 'SELF_KUDOS');
 
+  // Il destinatario deve esistere ed essere un amico: i kudos nascono dal
+  // feed sociale, che mostra solo attivita' degli amici.
+  const toPlayer = await Player.findById(toPlayerId).select('fcmToken');
+  if (!toPlayer) throw new NotFoundError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
+  if (!(await areFriends(fromPlayerId, toPlayerId))) {
+    throw new ForbiddenError('Puoi mandare kudos solo agli amici', 'NOT_FRIENDS');
+  }
+
+  // L'attivita' deve esistere e appartenere al destinatario: senza questo
+  // controllo chiunque potrebbe gonfiare i contatori con id arbitrari.
+  if (activityType !== 'quest_completion' || !Types.ObjectId.isValid(activityId)) {
+    throw new BadRequestError('Attività non valida', 'INVALID_ACTIVITY');
+  }
+  const completion = await Completion.findOne({ _id: activityId, playerId: toPlayerId });
+  if (!completion) {
+    throw new NotFoundError('Attività non trovata', 'ACTIVITY_NOT_FOUND');
+  }
+
   const existing = await Kudos.findOne({ fromPlayerId, activityId });
   if (existing)
     throw new ConflictError('Kudos già inviato per questa attività', 'KUDOS_ALREADY_SENT');
@@ -35,8 +66,7 @@ export async function sendKudos(
   await Kudos.create({ fromPlayerId, toPlayerId, activityType, activityId, emoji });
 
   const fromPlayer = await Player.findById(fromPlayerId).select('username');
-  const toPlayer = await Player.findById(toPlayerId).select('fcmToken');
-  if (fromPlayer && toPlayer?.fcmToken) {
+  if (fromPlayer && toPlayer.fcmToken) {
     const msg = KUDOS_MESSAGES[emoji](fromPlayer.username);
     await sendPushNotification(toPlayer.fcmToken, 'Kudos ricevuto!', msg);
   }
@@ -59,35 +89,46 @@ export async function getFeed(
 
   if (friendIds.length === 0) return [];
 
+  // Paginazione a livello di query: skip/limit sul DB. Il vecchio
+  // approccio (fetch di limit*2 e slice in memoria) restituiva pagine
+  // vuote per offset >= limit*2 anche quando esistevano altri elementi.
   const completions = await Completion.find({ playerId: { $in: friendIds } })
     .populate('playerId', 'username')
     .populate('questId', 'name')
     .sort({ completedAt: -1 })
-    .limit(limit * 2);
+    .skip(offset)
+    .limit(limit);
 
-  const items: FeedActivityItem[] = [];
+  const activityIds = completions.map((c) => String(c._id));
 
-  for (const c of completions) {
+  // Conteggi kudos in batch (una aggregate invece di N query per pagina)
+  const kudosCounts = await Kudos.aggregate<{ _id: string; count: number }>([
+    { $match: { activityId: { $in: activityIds }, activityType: 'quest_completion' } },
+    { $group: { _id: '$activityId', count: { $sum: 1 } } },
+  ]);
+  const countByActivity = new Map(kudosCounts.map((k) => [k._id, k.count]));
+
+  const myKudosDocs = await Kudos.find({
+    fromPlayerId: playerId,
+    activityId: { $in: activityIds },
+  }).select('activityId');
+  const myKudosSet = new Set(myKudosDocs.map((k) => k.activityId));
+
+  return completions.map((c) => {
     const player = c.playerId as unknown as { _id: unknown; username: string };
     const quest = c.questId as unknown as { _id: unknown; name: string } | null;
     const activityId = String(c._id);
-    const kudosCount = await Kudos.countDocuments({ activityId, activityType: 'quest_completion' });
-    const myKudos = await Kudos.exists({ fromPlayerId: playerId, activityId });
-
-    items.push({
-      type: 'quest_completion',
+    return {
+      type: 'quest_completion' as const,
       playerId: String(player._id),
       username: player.username,
       questName: quest?.name,
       timestamp: c.completedAt.toISOString(),
       activityId,
-      kudosCount,
-      myKudos: !!myKudos,
-    });
-  }
-
-  items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  return items.slice(offset, offset + limit);
+      kudosCount: countByActivity.get(activityId) ?? 0,
+      myKudos: myKudosSet.has(activityId),
+    };
+  });
 }
 
 export async function getSocialLeaderboard(playerId: string): Promise<SocialLeaderboardEntry[]> {
@@ -158,9 +199,14 @@ export async function getSocialLeaderboard(playerId: string): Promise<SocialLead
 
 export async function sendFriendRequest(
   requesterId: string,
-  recipientUsername: string,
+  target: { recipientId?: string; username?: string },
 ): Promise<void> {
-  const recipient = await Player.findOne({ username: recipientUsername }).select('_id fcmToken');
+  // Il destinatario puo' essere indicato per id (contratto API) o per
+  // username (ricerca dal client). Almeno uno dei due e' garantito dal
+  // validator del controller.
+  const recipient = target.recipientId
+    ? await Player.findById(target.recipientId).select('_id fcmToken')
+    : await Player.findOne({ username: target.username }).select('_id fcmToken');
   if (!recipient) throw new NotFoundError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
 
   const recipientId = String(recipient._id);
@@ -173,7 +219,15 @@ export async function sendFriendRequest(
       { requesterId: recipientId, recipientId: requesterId },
     ],
   });
-  if (existing) throw new ConflictError('Relazione già esistente', 'FRIENDSHIP_ALREADY_EXISTS');
+  if (existing) {
+    // Una richiesta rifiutata non blocca per sempre la coppia: viene
+    // rimossa e sostituita dalla nuova richiesta.
+    if (existing.status === 'rejected') {
+      await existing.deleteOne();
+    } else {
+      throw new ConflictError('Relazione già esistente', 'FRIENDSHIP_ALREADY_EXISTS');
+    }
+  }
 
   await Friendship.create({ requesterId, recipientId });
 

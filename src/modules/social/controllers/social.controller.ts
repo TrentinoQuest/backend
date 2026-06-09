@@ -84,11 +84,20 @@ export async function sendFriendRequestHandler(
 ): Promise<void> {
   try {
     if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
-    const { username } = z
-      .object({ username: z.string().min(3).max(30) })
+    const body = z
+      .object({
+        recipientId: z
+          .string()
+          .regex(/^[a-f0-9]{24}$/i)
+          .optional(),
+        username: z.string().min(3).max(30).optional(),
+      })
       .strict()
+      .refine((b) => b.recipientId !== undefined || b.username !== undefined, {
+        message: 'Indicare recipientId o username',
+      })
       .parse(req.body);
-    await sendFriendRequest(String(req.user._id), username);
+    await sendFriendRequest(String(req.user._id), body);
     res.status(201).json({ message: 'Richiesta amicizia inviata' });
   } catch (err) {
     next(err);

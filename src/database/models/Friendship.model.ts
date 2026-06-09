@@ -7,6 +7,12 @@ export interface IFriendship extends Document {
   recipientId: Types.ObjectId;
   status: FriendshipStatus;
   lastNudgeAt: Date | null;
+  /**
+   * Chiave normalizzata della coppia (id ordinati): garantisce a livello
+   * di indice unique che non possano esistere due relazioni per la stessa
+   * coppia, indipendentemente dalla direzione (A→B e B→A concorrenti).
+   */
+  pairKey: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,11 +27,20 @@ const friendshipSchema = new Schema<IFriendship>(
       default: 'pending',
     },
     lastNudgeAt: { type: Date, default: null },
+    pairKey: { type: String },
   },
   { timestamps: true, collection: 'friendships' },
 );
 
-friendshipSchema.index({ requesterId: 1, recipientId: 1 }, { unique: true });
+// Calcola la pairKey prima della validazione cosi' da non doverla mai
+// passare manualmente alla create().
+friendshipSchema.pre('validate', function computePairKey() {
+  const ids = [String(this.requesterId), String(this.recipientId)].sort();
+  this.pairKey = ids.join('_');
+});
+
+friendshipSchema.index({ pairKey: 1 }, { unique: true });
+friendshipSchema.index({ requesterId: 1, recipientId: 1 });
 friendshipSchema.index({ recipientId: 1, status: 1 });
 
 export const Friendship: Model<IFriendship> = model<IFriendship>('Friendship', friendshipSchema);
