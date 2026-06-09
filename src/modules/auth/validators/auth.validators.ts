@@ -26,6 +26,7 @@ export const registerPlayerSchema = z
       .max(30, 'Lo username non può superare 30 caratteri')
       .regex(/^[A-Za-z0-9_]+$/, 'Lo username può contenere solo lettere, numeri e underscore'),
   })
+  .strict()
   .refine((data) => data.username.toLowerCase() !== data.password.toLowerCase(), {
     message: 'Username e password non possono coincidere',
     path: ['password'],

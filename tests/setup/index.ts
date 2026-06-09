@@ -4,6 +4,11 @@ import mongoose from 'mongoose';
 
 let mongod: MongoMemoryServer;
 
+// Silenzia i log applicativi durante i test: l'output di pino a livello
+// info sommerge il report di vitest. Va impostato prima dell'import di
+// env.ts (dotenv non sovrascrive variabili già presenti).
+process.env.LOG_LEVEL = process.env.LOG_LEVEL ?? 'fatal';
+
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   // Imposta l'URI prima che qualsiasi modulo importi env.ts (che fa dotenv.config).

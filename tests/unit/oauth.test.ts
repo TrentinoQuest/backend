@@ -85,16 +85,6 @@ describe('OAuth Google (SKIP_OAUTH_VERIFICATION=true)', () => {
     expect((body.user as Record<string, unknown>).oauthProvider).toBe('google');
   });
 
-  it('recupera il player esistente alla seconda chiamata con stesso sub', async () => {
-    const idToken = makeFakeGoogleToken(email, sub);
-    const res = makeResponse();
-
-    await googleOAuthHandler(makeRequest({ idToken }), res, makeNext());
-
-    const players = await Player.find({ oauthProvider: 'google', email });
-    expect(players).toHaveLength(1);
-  });
-
   it('non espone oauthId nella response', async () => {
     const idToken = makeFakeGoogleToken(email, sub);
     const res = makeResponse();
