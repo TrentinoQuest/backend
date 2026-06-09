@@ -8,6 +8,7 @@ export default defineConfig({
     testTimeout: 30000,
     env: {
       NODE_ENV: 'test',
+      MONGODB_URI: 'mongodb://localhost:27017/test',
       JWT_SECRET: 'test-secret-at-least-thirty-two-characters!!',
       JWT_ACCESS_EXPIRES_IN: '15m',
       JWT_REFRESH_EXPIRES_IN: '30d',
