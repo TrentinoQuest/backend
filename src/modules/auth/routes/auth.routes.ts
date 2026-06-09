@@ -5,6 +5,7 @@ import {
   logoutHandler,
   refreshHandler,
   passwordRecoveryHandler,
+  passwordResetHandler,
   deviceTokenHandler,
 } from '../controllers/auth.controller';
 import { googleOAuthHandler, appleOAuthHandler } from '../controllers/oauth.controller';
@@ -36,6 +37,7 @@ export function createAuthRouter(): Router {
   router.post('/refresh', refreshHandler);
   router.post('/logout', logoutHandler);
   router.post('/password-recovery', passwordRecoveryHandler);
+  router.post('/password-reset', passwordResetHandler);
   router.post('/device-token', authenticate, requireRole(UserRole.PLAYER), deviceTokenHandler);
   router.post('/oauth/google', googleOAuthHandler);
   router.post('/oauth/apple', appleOAuthHandler);

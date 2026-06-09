@@ -78,6 +78,25 @@ export const passwordRecoverySchema = z
 export type PasswordRecoveryInput = z.infer<typeof passwordRecoverySchema>;
 
 /**
+ * Validator zod per la richiesta di reset password.
+ *
+ * Il token e' la stringa ricevuta via link di recovery; la nuova password
+ * segue le stesse regole della registrazione.
+ */
+export const passwordResetSchema = z
+  .object({
+    token: z.string().min(1, 'Token obbligatorio'),
+    newPassword: z
+      .string()
+      .min(8, 'La password deve contenere almeno 8 caratteri')
+      .regex(/[A-Za-z]/, 'La password deve contenere almeno una lettera')
+      .regex(/[0-9]/, 'La password deve contenere almeno un numero'),
+  })
+  .strict();
+
+export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
+
+/**
  * Validator zod per la richiesta di refresh dei token.
  *
  * Accetta il refresh token come stringa non vuota. La validazione

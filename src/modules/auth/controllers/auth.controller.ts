@@ -4,6 +4,7 @@ import {
   registerPlayerSchema,
   loginSchema,
   passwordRecoverySchema,
+  passwordResetSchema,
   refreshTokenSchema,
   logoutSchema,
   deviceTokenSchema,
@@ -14,6 +15,7 @@ import {
   logout,
   refreshTokens,
   requestPasswordRecovery,
+  resetPassword,
   AuthResult,
   TokenPair,
 } from '../services/auth.service';
@@ -182,6 +184,26 @@ export async function passwordRecoveryHandler(
     const input = passwordRecoverySchema.parse(req.body);
     await requestPasswordRecovery(input);
     res.status(202).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Handler per POST /auth/password-reset.
+ *
+ * Completa il reset password con il token ricevuto via link di recovery.
+ * Risponde 204 in caso di successo; 401 se il token non e' valido.
+ */
+export async function passwordResetHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const input = passwordResetSchema.parse(req.body);
+    await resetPassword(input.token, input.newPassword);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

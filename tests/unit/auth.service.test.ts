@@ -4,6 +4,8 @@ import {
   login,
   refreshTokens,
   logout,
+  requestPasswordRecovery,
+  resetPassword,
 } from '../../src/modules/auth/services/auth.service';
 
 describe('registerPlayer', () => {
@@ -144,5 +146,74 @@ describe('logout', () => {
 
     await logout(refreshToken);
     await expect(logout(refreshToken)).resolves.toBeUndefined();
+  });
+});
+
+// ── Password reset ───────────────────────────────────────────────────────────
+
+describe('resetPassword', () => {
+  async function setupPlayerWithRecovery(): Promise<{ email: string; token: string }> {
+    const email = `reset-${Date.now()}@test.com`;
+    await registerPlayer({ email, password: 'OldPassword1', username: `reset${Date.now()}` });
+    const token = await requestPasswordRecovery({ email });
+    if (!token) throw new Error('token di recovery non generato');
+    return { email, token };
+  }
+
+  it('cambia la password e permette il login con quella nuova', async () => {
+    const { email, token } = await setupPlayerWithRecovery();
+
+    await resetPassword(token, 'NewPassword1');
+
+    const result = await login({ email, password: 'NewPassword1' });
+    expect(result.accessToken).toBeTruthy();
+  });
+
+  it('rifiuta il login con la vecchia password dopo il reset', async () => {
+    const { email, token } = await setupPlayerWithRecovery();
+
+    await resetPassword(token, 'NewPassword1');
+
+    await expect(login({ email, password: 'OldPassword1' })).rejects.toMatchObject({
+      code: 'INVALID_CREDENTIALS',
+    });
+  });
+
+  it('il token è monouso: il secondo reset fallisce', async () => {
+    const { token } = await setupPlayerWithRecovery();
+
+    await resetPassword(token, 'NewPassword1');
+
+    await expect(resetPassword(token, 'AnotherPass1')).rejects.toMatchObject({
+      code: 'INVALID_RESET_TOKEN',
+    });
+  });
+
+  it('rifiuta un token inesistente', async () => {
+    await expect(resetPassword('token-inventato', 'NewPassword1')).rejects.toMatchObject({
+      code: 'INVALID_RESET_TOKEN',
+    });
+  });
+
+  it('revoca i refresh token attivi dopo il reset', async () => {
+    const email = `resetrt-${Date.now()}@test.com`;
+    const { refreshToken } = await registerPlayer({
+      email,
+      password: 'OldPassword1',
+      username: `resetrt${Date.now()}`,
+    });
+    const token = await requestPasswordRecovery({ email });
+    if (!token) throw new Error('token di recovery non generato');
+
+    await resetPassword(token, 'NewPassword1');
+
+    await expect(refreshTokens(refreshToken)).rejects.toMatchObject({
+      code: 'INVALID_REFRESH_TOKEN',
+    });
+  });
+
+  it('requestPasswordRecovery ritorna null per email non registrata', async () => {
+    const token = await requestPasswordRecovery({ email: 'nonesiste@test.com' });
+    expect(token).toBeNull();
   });
 });

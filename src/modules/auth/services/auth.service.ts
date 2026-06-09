@@ -14,7 +14,9 @@ import {
   createRefreshToken,
   findValidRefreshTokenByHash,
   revokeRefreshTokenByHash,
+  revokeAllRefreshTokensForUser,
 } from '../repositories/refresh-token.repository';
+import { PasswordResetToken } from '../../../database/models/PasswordResetToken.model';
 import {
   RegisterPlayerInput,
   LoginInput,
@@ -290,29 +292,80 @@ export async function logout(refreshTokenValue: string): Promise<void> {
   await revokeRefreshTokenByHash(tokenHash);
 }
 
+/** Durata di validita' di un token di reset password. */
+const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
 /**
  * Avvia il flusso di recovery password.
  *
  * Per evitare di rivelare se un'email e' registrata o meno, la funzione
  * non lancia errori se l'utente non esiste: ritorna sempre con successo.
  *
- * In questa fase l'invio email e' mockato: il link di recovery viene
+ * Il token viene persistito come hash SHA-256 (mai in chiaro) e scade
+ * dopo un'ora. L'invio email e' mockato: il link di recovery viene
  * loggato sul terminale del backend invece di essere inviato. Verra'
  * sostituito con un servizio email reale quando il flusso sara' completo.
+ *
+ * Ritorna il token in chiaro per i test e per il futuro servizio email;
+ * il controller NON lo include mai nella response HTTP.
  */
-export async function requestPasswordRecovery(input: PasswordRecoveryInput): Promise<void> {
+export async function requestPasswordRecovery(
+  input: PasswordRecoveryInput,
+): Promise<string | null> {
   const user = await findUserByEmail(input.email);
   if (!user) {
-    return;
+    return null;
   }
 
   const recoveryToken = randomBytes(32).toString('hex');
+  await PasswordResetToken.create({
+    userId: user._id,
+    tokenHash: createHash('sha256').update(recoveryToken).digest('hex'),
+    expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+  });
+
   const recoveryLink = `http://localhost:3000/api/v1/auth/password-reset?token=${recoveryToken}`;
 
   logger.info(
     { email: user.email, recoveryLink },
     '[MOCK EMAIL] Link di recovery password generato',
   );
+
+  return recoveryToken;
+}
+
+/**
+ * Completa il reset della password a partire da un token di recovery valido.
+ *
+ * Il token e' monouso: viene marcato come usato prima dell'aggiornamento
+ * della password. Tutti i refresh token attivi dell'utente vengono
+ * revocati ("kill all sessions") per invalidare eventuali sessioni
+ * dell'attaccante che ha causato il reset.
+ */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  // findOneAndUpdate atomico su usedAt: due richieste concorrenti con lo
+  // stesso token non possono entrambe superare il controllo monouso.
+  const stored = await PasswordResetToken.findOneAndUpdate(
+    { tokenHash, usedAt: null, expiresAt: { $gt: new Date() } },
+    { usedAt: new Date() },
+  );
+  if (!stored) {
+    throw new UnauthorizedError(
+      "Token di reset non valido, scaduto o gia' usato",
+      'INVALID_RESET_TOKEN',
+    );
+  }
+
+  const user = await findUserById(String(stored.userId));
+  if (!user) {
+    throw new UnauthorizedError('Utente non trovato', 'USER_NOT_FOUND');
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  await revokeAllRefreshTokensForUser(stored.userId);
 }
 
 /**
