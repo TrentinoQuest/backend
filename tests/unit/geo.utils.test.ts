@@ -48,52 +48,61 @@ describe('geoPointToGeoJson / geoJsonToGeoPoint', () => {
 describe('computeProximityZone', () => {
   const radius = 100;
 
-  it('restituisce outside_area se la distanza supera il raggio', () => {
-    expect(computeProximityZone(101, radius)).toBe('outside_area');
+  // Il primo argomento è la distanza dal centro PUBBLICO della searchArea,
+  // il secondo la distanza dal QR segreto. outside_area dipende solo dal
+  // primo: il confine non deve mai rivelare la posizione del QR.
+
+  it('restituisce outside_area se il giocatore è fuori dalla searchArea', () => {
+    expect(computeProximityZone(101, 5, radius)).toBe('outside_area');
   });
 
-  it('restituisce outside_area esattamente al confine (> raggio)', () => {
-    expect(computeProximityZone(100.1, radius)).toBe('outside_area');
+  it('restituisce outside_area appena oltre il confine della searchArea', () => {
+    expect(computeProximityZone(100.1, 50, radius)).toBe('outside_area');
   });
 
-  // distanza > 60% → cold; esattamente al 60% cade in warm (la soglia è >)
-  it('restituisce cold per distanza strettamente > 60% del raggio', () => {
-    expect(computeProximityZone(61, radius)).toBe('cold');
+  it('NON restituisce outside_area dentro la searchArea anche se lontano dal QR', () => {
+    // Dentro l'area (60m dal centro) ma a 150m dal QR: ratio clampato a 1 → cold
+    expect(computeProximityZone(60, 150, radius)).toBe('cold');
+  });
+
+  // distanza dal QR > 60% → cold; esattamente al 60% cade in warm (la soglia è >)
+  it('restituisce cold per distanza dal QR strettamente > 60% del raggio', () => {
+    expect(computeProximityZone(50, 61, radius)).toBe('cold');
   });
 
   it('restituisce cold tra 60% e 100% del raggio', () => {
-    expect(computeProximityZone(80, radius)).toBe('cold');
+    expect(computeProximityZone(50, 80, radius)).toBe('cold');
   });
 
   // al 60% esatto: ratio = 0.6, NON > 0.6 → warm
   it('restituisce warm al confine inferiore di cold (60%)', () => {
-    expect(computeProximityZone(60, radius)).toBe('warm');
+    expect(computeProximityZone(50, 60, radius)).toBe('warm');
   });
 
   it('restituisce warm tra 30% e 60% del raggio', () => {
-    expect(computeProximityZone(45, radius)).toBe('warm');
+    expect(computeProximityZone(50, 45, radius)).toBe('warm');
   });
 
   // al 30% esatto: ratio = 0.3, NON > 0.3 → hot
   it('restituisce hot al confine inferiore di warm (30%)', () => {
-    expect(computeProximityZone(30, radius)).toBe('hot');
+    expect(computeProximityZone(50, 30, radius)).toBe('hot');
   });
 
   it('restituisce hot tra 10% e 30% del raggio', () => {
-    expect(computeProximityZone(20, radius)).toBe('hot');
+    expect(computeProximityZone(50, 20, radius)).toBe('hot');
   });
 
   // al 10% esatto: ratio = 0.1, NON > 0.1 → burning
   it('restituisce burning al confine inferiore di hot (10%)', () => {
-    expect(computeProximityZone(10, radius)).toBe('burning');
+    expect(computeProximityZone(50, 10, radius)).toBe('burning');
   });
 
   it('restituisce burning sotto il 10% del raggio', () => {
-    expect(computeProximityZone(9, radius)).toBe('burning');
+    expect(computeProximityZone(5, 9, radius)).toBe('burning');
   });
 
-  it('restituisce burning a distanza 0', () => {
-    expect(computeProximityZone(0, radius)).toBe('burning');
+  it('restituisce burning a distanza 0 dal QR', () => {
+    expect(computeProximityZone(0, 0, radius)).toBe('burning');
   });
 });
 
