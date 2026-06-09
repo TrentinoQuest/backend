@@ -3,7 +3,9 @@ import { registerPlayer } from '../../src/modules/auth/services/auth.service';
 import {
   getLeagueCurrent,
   getLeagueHistory,
+  runLeagueWeeklyReset,
 } from '../../src/modules/leagues/services/league.service';
+import { Player } from '../../src/database/models/User.model';
 import { LeagueSeason, LeagueMembership, LeagueTier } from '../../src/database/models/League.model';
 import { Types } from 'mongoose';
 
@@ -37,12 +39,19 @@ describe('getLeagueCurrent', () => {
     });
   });
 
-  it('lancia NotFoundError se il player non è in lega', async () => {
+  it('crea la membership on-demand se il player non è ancora in lega', async () => {
+    // Un player registrato a metà settimana non è nei gironi creati al
+    // reset del lunedì: deve essere inserito al primo accesso, non vedere 404.
     const playerId = await createPlayer('b');
     await createActiveSeason();
-    await expect(getLeagueCurrent(playerId)).rejects.toMatchObject({
-      code: 'NOT_IN_LEAGUE',
-    });
+
+    const view = await getLeagueCurrent(playerId);
+
+    expect(view.tier).toBe(LeagueTier.PORFIDO);
+    expect(view.leaderboard).toHaveLength(1);
+    expect(view.leaderboard[0].isCurrentPlayer).toBe(true);
+    const membership = await LeagueMembership.findOne({ playerId });
+    expect(membership).not.toBeNull();
   });
 
   it('restituisce il leaderboard ordinato per weeklyXp decrescente', async () => {
@@ -223,5 +232,106 @@ describe('getLeagueHistory', () => {
 
     const history = await getLeagueHistory(playerId);
     expect(history.length).toBeLessThanOrEqual(10);
+  });
+});
+
+// ── runLeagueWeeklyReset ──────────────────────────────────────────────────────
+
+describe('runLeagueWeeklyReset', () => {
+  it('crea la stagione della settimana e i gironi per i player esistenti', async () => {
+    const a = await createPlayer('r1');
+    const b = await createPlayer('r2');
+
+    await runLeagueWeeklyReset();
+
+    const season = await LeagueSeason.findOne({ active: true });
+    expect(season).not.toBeNull();
+    const memberships = await LeagueMembership.find({ seasonId: season?._id });
+    const ids = memberships.map((m) => String(m.playerId));
+    expect(ids).toContain(a);
+    expect(ids).toContain(b);
+  });
+
+  it('è idempotente: una seconda esecuzione nella stessa settimana non duplica nulla', async () => {
+    await createPlayer('r3');
+
+    await runLeagueWeeklyReset();
+    await runLeagueWeeklyReset();
+
+    const seasons = await LeagueSeason.find();
+    expect(seasons).toHaveLength(1);
+  });
+
+  it('non marca promosso chi è già al tier massimo né retrocesso chi è al minimo', async () => {
+    // Stagione "della settimana scorsa" attiva con un girone piccolo
+    const topId = await createPlayer('r4');
+    const bottomId = await createPlayer('r5');
+    await Player.updateOne({ _id: topId }, { currentLeagueTier: LeagueTier.DOLOMITI });
+
+    const lastMonday = new Date();
+    lastMonday.setUTCDate(lastMonday.getUTCDate() - 7);
+    const prevSeason = await LeagueSeason.create({
+      weekStart: lastMonday,
+      weekEnd: new Date(),
+      active: true,
+    });
+    await LeagueMembership.create({
+      playerId: topId,
+      seasonId: prevSeason._id,
+      groupId: 'g-top',
+      tier: LeagueTier.DOLOMITI,
+      weeklyXp: 500,
+    });
+    await LeagueMembership.create({
+      playerId: bottomId,
+      seasonId: prevSeason._id,
+      groupId: 'g-bottom',
+      tier: LeagueTier.PORFIDO,
+      weeklyXp: 0,
+    });
+
+    await runLeagueWeeklyReset();
+
+    const topMembership = await LeagueMembership.findOne({
+      playerId: topId,
+      seasonId: prevSeason._id,
+    });
+    const bottomMembership = await LeagueMembership.findOne({
+      playerId: bottomId,
+      seasonId: prevSeason._id,
+    });
+    // Tier massimo: niente flag promoted (il tier non può salire)
+    expect(topMembership?.promoted).toBe(false);
+    // Tier minimo: niente flag relegated (il tier non può scendere)
+    expect(bottomMembership?.relegated).toBe(false);
+    // Nessuno può essere insieme promosso e retrocesso
+    expect(topMembership?.promoted && topMembership?.relegated).toBeFalsy();
+  });
+
+  it('non assegna mai promoted e relegated insieme nei gironi piccoli', async () => {
+    const ids = await Promise.all([1, 2, 3, 4, 5, 6].map((i) => createPlayer(`r6${i}`)));
+    const lastMonday = new Date();
+    lastMonday.setUTCDate(lastMonday.getUTCDate() - 7);
+    const prevSeason = await LeagueSeason.create({
+      weekStart: lastMonday,
+      weekEnd: new Date(),
+      active: true,
+    });
+    for (let i = 0; i < ids.length; i++) {
+      await LeagueMembership.create({
+        playerId: ids[i],
+        seasonId: prevSeason._id,
+        groupId: 'g-small',
+        tier: LeagueTier.MARMO,
+        weeklyXp: i * 10,
+      });
+    }
+
+    await runLeagueWeeklyReset();
+
+    const members = await LeagueMembership.find({ seasonId: prevSeason._id });
+    for (const m of members) {
+      expect(m.promoted && m.relegated).toBe(false);
+    }
   });
 });

@@ -21,6 +21,11 @@ export function startLeagueWeeklyResetJob(): () => void {
     { timezone: 'UTC' },
   );
 
+  // Catch-up all'avvio: se il server era spento lunedì alle 00:01 la
+  // stagione della settimana non esisterebbe fino al lunedì successivo.
+  // runLeagueWeeklyReset è idempotente, quindi l'esecuzione extra è sicura.
+  void runReset();
+
   logger.info('League weekly reset job: avviato');
   return () => {
     void task.stop();
