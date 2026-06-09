@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../../../middleware/auth.middleware';
+import { redeemRateLimiter } from '../../../middleware/rate-limit';
 import { UserRole } from '../../../database/models/User.model';
 import {
   listOffersHandler,
@@ -22,9 +23,10 @@ export function createMarketRouter(): Router {
   );
   router.get('/market/my-coupons', authenticate, requireRole(UserRole.PLAYER), getMyCouponsHandler);
 
-  // Endpoint pubblici per esercenti (nessuna auth JWT)
-  router.get('/market/redeem/:token', getRedeemInfoHandler);
-  router.post('/market/redeem/:token', redeemCouponHandler);
+  // Endpoint pubblici per esercenti (nessuna auth JWT, rate limited
+  // per impedire il brute force sui token)
+  router.get('/market/redeem/:token', redeemRateLimiter, getRedeemInfoHandler);
+  router.post('/market/redeem/:token', redeemRateLimiter, redeemCouponHandler);
 
   return router;
 }
