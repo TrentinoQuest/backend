@@ -44,4 +44,12 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+// SKIP_OAUTH_VERIFICATION accetta token OAuth senza verifica della firma:
+// in produzione equivale a un bypass completo dell'autenticazione e non
+// deve mai essere attivo. Fail-fast all'avvio.
+if (parsed.data.NODE_ENV === 'production' && parsed.data.SKIP_OAUTH_VERIFICATION) {
+  console.error('SKIP_OAUTH_VERIFICATION non può essere attivo in produzione');
+  process.exit(1);
+}
+
 export const env = parsed.data;

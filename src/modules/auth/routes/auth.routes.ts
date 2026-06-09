@@ -7,7 +7,7 @@ import {
   passwordRecoveryHandler,
   deviceTokenHandler,
 } from '../controllers/auth.controller';
-import { googleOAuthHandler } from '../controllers/oauth.controller';
+import { googleOAuthHandler, appleOAuthHandler } from '../controllers/oauth.controller';
 import { authenticate, requireRole } from '../../../middleware/auth.middleware';
 import { UserRole } from '../../../database/models/User.model';
 
@@ -38,6 +38,7 @@ export function createAuthRouter(): Router {
   router.post('/password-recovery', passwordRecoveryHandler);
   router.post('/device-token', authenticate, requireRole(UserRole.PLAYER), deviceTokenHandler);
   router.post('/oauth/google', googleOAuthHandler);
+  router.post('/oauth/apple', appleOAuthHandler);
 
   return router;
 }
