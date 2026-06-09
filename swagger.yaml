@@ -31,7 +31,7 @@ info:
     TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
     token. La rotation dei refresh token e' attiva: ogni chiamata a
     /auth/refresh emette un nuovo refresh token e revoca quello precedente.
-  version: 0.9.0
+  version: 0.10.0
   contact:
     name: Gruppo 19 - Trentino Quest
 servers:
@@ -1355,16 +1355,22 @@ components:
 
     CompleteDailyQuestResponse:
       type: object
-      required: [quest, xpAwarded, coinsAwarded, alreadyCompleted]
+      required: [xpAwarded, coinsAwarded, totalXp, totalPoints, alreadyCompleted]
       properties:
-        quest:
-          $ref: '#/components/schemas/DailyQuestItem'
         xpAwarded:
           type: integer
           minimum: 0
         coinsAwarded:
           type: integer
           minimum: 0
+        totalXp:
+          type: integer
+          minimum: 0
+          description: XP totali del giocatore dopo il completamento
+        totalPoints:
+          type: integer
+          minimum: 0
+          description: Saldo monete del giocatore dopo il completamento
         alreadyCompleted:
           type: boolean
 
@@ -1922,6 +1928,44 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /auth/password-reset:
+    post:
+      tags: [auth]
+      summary: Completa il reset della password
+      description: |
+        Imposta una nuova password a partire dal token monouso ricevuto
+        via link di recovery. Il token scade dopo un'ora e puo' essere
+        usato una sola volta. Al reset tutte le sessioni attive (refresh
+        token) dell'utente vengono revocate.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                  description: Token di reset ricevuto via link di recovery
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: Nuova password (almeno 8 caratteri, una lettera e un numero)
+      responses:
+        '204':
+          description: Password aggiornata e sessioni revocate
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Token di reset non valido, scaduto o gia' usato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /auth/oauth/google:
     post:
       tags: [auth]
@@ -1953,6 +1997,57 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
           description: Token non valido o GOOGLE_CLIENT_ID non configurato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/oauth/apple:
+    post:
+      tags: [auth]
+      summary: Login/registrazione tramite Apple Sign In
+      description: |
+        Il client mobile ottiene un identity token da Apple SDK (Capacitor)
+        e lo invia al backend. Il backend verifica la firma tramite le
+        chiavi pubbliche JWKS di Apple, crea o recupera il Player e
+        restituisce la coppia access+refresh token.
+        Apple invia nome e cognome SOLO al primo login: per questo i campi
+        firstName/lastName sono opzionali.
+        In sviluppo locale con SKIP_OAUTH_VERIFICATION=true si puo' usare un
+        JWT firmato con qualsiasi segreto purche' contenga email e sub.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: Identity token ottenuto da Apple SDK
+                firstName:
+                  type: string
+                  description: Nome (presente solo al primo login)
+                lastName:
+                  type: string
+                  description: Cognome (presente solo al primo login)
+      responses:
+        '200':
+          description: Login/registrazione riuscita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Token non valido o APPLE_CLIENT_ID non configurato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email gia' registrata con un altro metodo di accesso
           content:
             application/json:
               schema:
@@ -3523,8 +3618,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username]
+              description: Indicare recipientId (contratto preferito) oppure username.
               properties:
+                recipientId:
+                  type: string
+                  pattern: '^[a-f0-9]{24}$'
+                  description: Id del giocatore a cui inviare la richiesta
                 username:
                   type: string
                   minLength: 3
