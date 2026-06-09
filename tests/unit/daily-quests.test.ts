@@ -3,6 +3,7 @@ import { registerPlayer } from '../../src/modules/auth/services/auth.service';
 import {
   getDailyQuests,
   completeDailyQuest,
+  pickThreeDeterministic,
 } from '../../src/modules/quests/services/daily-quest.service';
 import { DAILY_QUEST_POOL } from '../../src/config/daily-quests.config';
 import { DailyQuestContext, DailyQuestType } from '../../src/database/models/DailyQuest.model';
@@ -159,5 +160,58 @@ describe('completeDailyQuest', () => {
         code: 'DAILY_QUEST_TYPE_NOT_FOUND',
       });
     }
+  });
+});
+
+// ── pickThreeDeterministic ────────────────────────────────────────────────────
+
+describe('pickThreeDeterministic', () => {
+  const pool = ['a', 'b', 'c', 'd', 'e', 'f'];
+
+  it('è deterministico: stesso giorno → stessa selezione', () => {
+    expect(pickThreeDeterministic(pool, 20000)).toEqual(pickThreeDeterministic(pool, 20000));
+  });
+
+  it('restituisce sempre 3 elementi distinti', () => {
+    for (let day = 20000; day < 20030; day++) {
+      const picked = pickThreeDeterministic(pool, day);
+      expect(picked).toHaveLength(3);
+      expect(new Set(picked).size).toBe(3);
+    }
+  });
+
+  it('varia la selezione nel corso dei giorni (non solo 2 set fissi)', () => {
+    const sets = new Set<string>();
+    for (let day = 20000; day < 20030; day++) {
+      sets.add(pickThreeDeterministic(pool, day).slice().sort().join(','));
+    }
+    // La vecchia formula modulare produceva esattamente 2 set distinti
+    expect(sets.size).toBeGreaterThan(2);
+  });
+
+  it('con pool di dimensione <= 3 restituisce tutto il pool', () => {
+    expect(pickThreeDeterministic(['x'], 123)).toEqual(['x']);
+    expect(pickThreeDeterministic(['x', 'y'], 123)).toEqual(['x', 'y']);
+    expect(pickThreeDeterministic([], 123)).toEqual([]);
+  });
+});
+
+describe('completeDailyQuest — totali aggiornati', () => {
+  it('ritorna totalXp e totalPoints aggiornati e ricalcola il livello', async () => {
+    const playerId = await createPlayer('tot');
+    // Porta il player vicino alla soglia del livello 2 (200 XP)
+    await Player.findByIdAndUpdate(playerId, { xp: 190, totalPoints: 5 });
+
+    const view = await getDailyQuests(playerId, DailyQuestContext.IN_TRENTINO);
+    const quest = view.quests[0];
+
+    const result = await completeDailyQuest(playerId, quest.type);
+
+    expect(result.totalXp).toBe(190 + quest.xpReward);
+    expect(result.totalPoints).toBe(5 + quest.coinsReward);
+
+    const player = await Player.findById(playerId);
+    // Il livello deve essere coerente con gli XP (non stantio)
+    expect(player?.level).toBe(quest.xpReward >= 10 ? 2 : 1);
   });
 });

@@ -37,6 +37,13 @@ export interface IDailyQuestItem {
 export interface IDailyQuestAssignment extends Document {
   playerId: Types.ObjectId;
   date: string;
+  /**
+   * Contesto con cui e' stato generato l'assignment. L'assegnazione del
+   * giorno e' congelata alla prima richiesta: chiamate successive con
+   * contesto diverso ricevono le stesse missioni (lo stato di
+   * completamento non puo' essere rigenerato a meta' giornata).
+   */
+  context: DailyQuestContext;
   quests: IDailyQuestItem[];
   createdAt: Date;
 }
@@ -45,6 +52,11 @@ const dailyQuestAssignmentSchema = new Schema<IDailyQuestAssignment>(
   {
     playerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     date: { type: String, required: true },
+    context: {
+      type: String,
+      enum: Object.values(DailyQuestContext),
+      default: DailyQuestContext.IN_TRENTINO,
+    },
     quests: [
       {
         type: { type: String, enum: Object.values(DailyQuestType), required: true },

@@ -8,17 +8,33 @@ function todayString(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-function dayOfYear(date: Date): number {
-  const start = new Date(date.getFullYear(), 0, 0);
-  return Math.floor((date.getTime() - start.getTime()) / 86400000);
+/**
+ * Numero del giorno corrente in UTC (giorni interi dall'epoch).
+ * Coerente con todayString(): entrambi cambiano alla mezzanotte UTC,
+ * cosi' il selettore della domanda e la chiave delle risposte puntano
+ * sempre allo stesso "oggi".
+ */
+function utcDayNumber(): number {
+  return Math.floor(Date.now() / 86_400_000);
+}
+
+/**
+ * Carica le domande attive con ordinamento stabile per _id.
+ *
+ * Senza sort esplicito MongoDB restituisce i documenti in ordine
+ * naturale, che NON e' garantito stabile: la "domanda del giorno"
+ * potrebbe cambiare tra una chiamata e l'altra.
+ */
+async function findActiveQuestionsStable(): Promise<Awaited<ReturnType<typeof LoreQuestion.find>>> {
+  return LoreQuestion.find({ active: true }).sort({ _id: 1 });
 }
 
 export async function getDailyQuestion(playerId: string): Promise<LoreQuestionView> {
-  const questions = await LoreQuestion.find({ active: true });
+  const questions = await findActiveQuestionsStable();
   if (questions.length === 0)
     throw new NotFoundError('Nessuna domanda disponibile', 'NO_LORE_QUESTIONS');
 
-  const idx = dayOfYear(new Date()) % questions.length;
+  const idx = utcDayNumber() % questions.length;
   const question = questions[idx];
   const date = todayString();
 
@@ -51,11 +67,11 @@ export async function answerDailyQuestion(
   const existing = await LoreAnswer.findOne({ playerId, date });
   if (existing) throw new ConflictError('Hai già risposto oggi', 'ALREADY_ANSWERED');
 
-  const questions = await LoreQuestion.find({ active: true });
+  const questions = await findActiveQuestionsStable();
   if (questions.length === 0)
     throw new NotFoundError('Nessuna domanda disponibile', 'NO_LORE_QUESTIONS');
 
-  const idx = dayOfYear(new Date()) % questions.length;
+  const idx = utcDayNumber() % questions.length;
   const question = questions[idx];
   const correct = optionIndex === question.correctOptionIndex;
 
