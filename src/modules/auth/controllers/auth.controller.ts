@@ -31,6 +31,9 @@ import { computeLevelFromXp, computeXpToNextLevel } from '../../../config/gamifi
 function serializeUser(user: IUser): Record<string, unknown> {
   const obj = user.toObject({ versionKey: false });
   delete (obj as Record<string, unknown>).password;
+  // Campi interni al backend: mai esposti via API (vedi CLAUDE.md).
+  delete (obj as Record<string, unknown>).fcmToken;
+  delete (obj as Record<string, unknown>).oauthId;
   const result: Record<string, unknown> = {
     ...obj,
     id: String(user._id),

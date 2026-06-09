@@ -38,6 +38,9 @@ import { computeLevelFromXp, computeXpToNextLevel } from '../../../config/gamifi
 function serializePlayer(user: IUser): Player {
   const obj = user.toObject({ versionKey: false });
   delete (obj as Record<string, unknown>).password;
+  // Campi interni al backend: mai esposti via API (vedi CLAUDE.md).
+  delete (obj as Record<string, unknown>).fcmToken;
+  delete (obj as Record<string, unknown>).oauthId;
   const player = user as IPlayer;
   const { title: levelTitle } = computeLevelFromXp(player.xp ?? 0);
   const xpToNextLevel = computeXpToNextLevel(player.xp ?? 0);

@@ -19,6 +19,9 @@ describe('POST /api/v1/auth/register', () => {
     expect(res.body.user.role).toBe('player');
     // La password non deve mai essere restituita nella risposta
     expect(res.body.user.password).toBeUndefined();
+    // Campi interni al backend: mai esposti via API
+    expect(res.body.user.fcmToken).toBeUndefined();
+    expect(res.body.user.oauthId).toBeUndefined();
   });
 
   it('returns 409 with EMAIL_ALREADY_USED for duplicate email', async () => {

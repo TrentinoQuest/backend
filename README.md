@@ -106,22 +106,22 @@ docker compose down
 
 Tutte le variabili sono validate all'avvio tramite zod. Se mancanti o non valide, il server termina con un errore descrittivo.
 
-| Variabile                          | Obbligatoria | Default                          | Descrizione                                        |
-| ---------------------------------- | ------------ | -------------------------------- | -------------------------------------------------- |
-| `NODE_ENV`                         | no           | `development`                    | `development`, `production`, `test`                |
-| `PORT`                             | no           | `3000`                           | Porta del server HTTP                              |
-| `LOG_LEVEL`                        | no           | `info`                           | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
-| `MONGODB_URI`                      | sì           | —                                | Connection string MongoDB completa                 |
-| `DB_RETRY_INTERVAL_MS`             | no           | `5000`                           | Intervallo di retry connessione DB (ms)            |
-| `JWT_SECRET`                       | sì           | —                                | Chiave segreta per la firma dei JWT (min 32 car.)  |
-| `JWT_ACCESS_EXPIRES_IN`            | no           | `15m`                            | Durata access token                                |
-| `JWT_REFRESH_EXPIRES_IN`           | no           | `30d`                            | Durata refresh token                               |
-| `GEO_MAX_ACCURACY_METERS`          | no           | `100`                            | Precisione GPS massima accettata (m)               |
-| `GEO_MAX_FIX_AGE_SECONDS`          | no           | `60`                             | Età massima fix GPS accettata (s)                  |
-| `FIREBASE_ENABLED`                 | no           | `false`                          | Abilita invio push notification via Firebase       |
-| `FIREBASE_SERVICE_ACCOUNT_KEY_PATH`| no           | `./firebase-service-account.json`| Path al file JSON service account Firebase        |
-| `GOOGLE_CLIENT_ID`                 | no           | —                                | Client ID da Google Cloud Console (OAuth)          |
-| `SKIP_OAUTH_VERIFICATION`          | no           | `false`                          | Bypassa verifica token OAuth (solo sviluppo)       |
+| Variabile                           | Obbligatoria | Default                           | Descrizione                                        |
+| ----------------------------------- | ------------ | --------------------------------- | -------------------------------------------------- |
+| `NODE_ENV`                          | no           | `development`                     | `development`, `production`, `test`                |
+| `PORT`                              | no           | `3000`                            | Porta del server HTTP                              |
+| `LOG_LEVEL`                         | no           | `info`                            | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| `MONGODB_URI`                       | sì           | —                                 | Connection string MongoDB completa                 |
+| `DB_RETRY_INTERVAL_MS`              | no           | `5000`                            | Intervallo di retry connessione DB (ms)            |
+| `JWT_SECRET`                        | sì           | —                                 | Chiave segreta per la firma dei JWT (min 32 car.)  |
+| `JWT_ACCESS_EXPIRES_IN`             | no           | `15m`                             | Durata access token                                |
+| `JWT_REFRESH_EXPIRES_IN`            | no           | `30d`                             | Durata refresh token                               |
+| `GEO_MAX_ACCURACY_METERS`           | no           | `100`                             | Precisione GPS massima accettata (m)               |
+| `GEO_MAX_FIX_AGE_SECONDS`           | no           | `60`                              | Età massima fix GPS accettata (s)                  |
+| `FIREBASE_ENABLED`                  | no           | `false`                           | Abilita invio push notification via Firebase       |
+| `FIREBASE_SERVICE_ACCOUNT_KEY_PATH` | no           | `./firebase-service-account.json` | Path al file JSON service account Firebase         |
+| `GOOGLE_CLIENT_ID`                  | no           | —                                 | Client ID da Google Cloud Console (OAuth)          |
+| `SKIP_OAUTH_VERIFICATION`           | no           | `false`                           | Bypassa verifica token OAuth (solo sviluppo)       |
 
 Vedi `.env.example` per i valori di esempio.
 
@@ -182,11 +182,11 @@ L'endpoint `/health` riflette lo stato del database e ritorna `503 Service Unava
 
 Trentino Quest è organizzato come polyrepo con quattro repository applicativi più uno di documentazione:
 
-- **trentino-quest-docs** — Deliverable D1, D2, ADR architetturali
-- **trentino-quest-backend** — questo repository
-- **trentino-quest-shared-types** — DTO TypeScript condivisi tra backend e frontend
-- **trentino-quest-mobile** — app mobile Ionic + Angular + Capacitor
-- **trentino-quest-backoffice** — pannello amministrativo Angular (admin + operator)
+- **TrentinoQuest/docs** — Deliverable D1, D2, ADR architetturali
+- **TrentinoQuest/backend** — questo repository
+- **TrentinoQuest/shared-types** — DTO TypeScript condivisi tra backend e frontend
+- **TrentinoQuest/mobile** — app mobile Ionic + Angular + Capacitor
+- **TrentinoQuest/backoffice** — pannello amministrativo Angular (admin + operator)
 
 ## Convenzioni di sviluppo
 
