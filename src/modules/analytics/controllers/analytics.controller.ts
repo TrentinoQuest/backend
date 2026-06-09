@@ -157,7 +157,7 @@ export async function getLeaderboardHandler(
     const players = await getLeaderboardForAdmin(limit);
     // La classifica e' ordinata per XP (progresso permanente); totalPoints
     // resta nella response come informazione sulla valuta posseduta.
-    const response: (LeaderboardEntry & { xp: number; level: number })[] = players.map((p) => ({
+    const response: LeaderboardEntry[] = players.map((p) => ({
       playerId: String(p._id),
       username: p.username,
       totalPoints: p.totalPoints,
