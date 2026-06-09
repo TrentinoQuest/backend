@@ -155,10 +155,14 @@ export async function getLeaderboardHandler(
   try {
     const { limit } = limitQuerySchema.parse(req.query);
     const players = await getLeaderboardForAdmin(limit);
-    const response: LeaderboardEntry[] = players.map((p) => ({
+    // La classifica e' ordinata per XP (progresso permanente); totalPoints
+    // resta nella response come informazione sulla valuta posseduta.
+    const response: (LeaderboardEntry & { xp: number; level: number })[] = players.map((p) => ({
       playerId: String(p._id),
       username: p.username,
       totalPoints: p.totalPoints,
+      xp: p.xp,
+      level: p.level,
     }));
     res.status(200).json(response);
   } catch (err) {

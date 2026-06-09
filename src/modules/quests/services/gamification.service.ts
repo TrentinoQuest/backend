@@ -13,25 +13,58 @@ import {
 } from '../../../config/gamification';
 
 /**
+ * Risultato di applyGamification: il GamificationResult da esporre al
+ * client piu' il saldo monete aggiornato (letto DOPO l'incremento, per
+ * non riportare al client un valore stantio).
+ */
+export interface AppliedGamification {
+  gamification: GamificationResult;
+  /** Saldo totalPoints del player dopo l'accredito. */
+  totalPoints: number;
+}
+
+/**
+ * Aggiorna weeklyXp nella lega corrente (fire-and-forget: non blocca
+ * la risposta se la lega non e' configurata).
+ */
+async function addWeeklyXpToLeague(playerId: string, xpAwarded: number): Promise<void> {
+  try {
+    const activeSeason = await LeagueSeason.findOne({ active: true });
+    if (activeSeason) {
+      await LeagueMembership.updateOne(
+        { playerId, seasonId: activeSeason._id },
+        { $inc: { weeklyXp: xpAwarded } },
+      );
+    }
+  } catch {
+    // non bloccare la risposta se la lega non e' configurata
+  }
+}
+
+/**
  * Applica la logica di gamification dopo un completamento.
  *
- * Aggiorna xp, level, streak, streakShieldActive sul Player in modo
- * atomico. Ritorna i dati da includere nella risposta del completamento.
+ * Aggiorna xp, level, streak, streakShieldActive e totalPoints sul
+ * Player. totalPoints rappresenta la valuta di gioco: l'UNICO accredito
+ * per un completamento avviene qui, calcolato come basePoints della
+ * quest moltiplicati per il moltiplicatore streak. Ritorna i dati da
+ * includere nella risposta del completamento piu' il saldo aggiornato.
  *
  * Ordine delle operazioni:
  * 1. Carica il Player
  * 2. Calcola lo stato streak (shield consumato / streak azzerata)
  * 3. Incrementa streak se giorno nuovo
  * 4. Aggiorna longestStreak
- * 5. Calcola XP e nuovo livello
+ * 5. Calcola XP, monete e nuovo livello
  * 6. Verifica se guadagna shield
  * 7. Aggiorna lastQuestDate
- * 8. Persiste con findByIdAndUpdate
+ * 8. Persiste con findByIdAndUpdate e legge il saldo aggiornato
  */
 export async function applyGamification(
   playerId: string,
   questType: QuestType,
-): Promise<GamificationResult> {
+  basePoints: number,
+): Promise<AppliedGamification> {
   const player = await Player.findById(playerId);
   if (!player) {
     throw new NotFoundError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
@@ -54,12 +87,10 @@ export async function applyGamification(
     player.longestStreak = player.currentStreak;
   }
 
-  // Passo 5: XP, livello e punti guadagnati
+  // Passo 5: XP, livello e monete guadagnate
   const multiplier = computeStreakMultiplier(player.currentStreak);
   const xpAwarded = computeXpAwarded(questType, player.currentStreak);
-  const coinsAwarded = Math.round(
-    questType === QuestType.PRIMARY ? 25 * multiplier : 10 * multiplier,
-  );
+  const coinsAwarded = Math.round(basePoints * multiplier);
   const prevLevel = computeLevelFromXp(player.xp);
   player.xp += xpAwarded;
   const newLevelData = computeLevelFromXp(player.xp);
@@ -73,43 +104,85 @@ export async function applyGamification(
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   player.lastQuestDate = todayDate;
 
-  // Passo 8: update atomico (gamification + totalPoints)
-  await Player.findByIdAndUpdate(playerId, {
-    xp: player.xp,
-    level: newLevelData.level,
-    currentStreak: player.currentStreak,
-    longestStreak: player.longestStreak,
-    lastQuestDate: player.lastQuestDate,
-    streakShieldActive: player.streakShieldActive,
-    $inc: { totalPoints: coinsAwarded },
-  });
+  // Passo 8: update con $inc atomico sulle monete; returnDocument 'after'
+  // per leggere il saldo realmente persistito (non un valore stantio)
+  const updated = await Player.findByIdAndUpdate(
+    playerId,
+    {
+      xp: player.xp,
+      level: newLevelData.level,
+      currentStreak: player.currentStreak,
+      longestStreak: player.longestStreak,
+      lastQuestDate: player.lastQuestDate,
+      streakShieldActive: player.streakShieldActive,
+      $inc: { totalPoints: coinsAwarded },
+    },
+    { returnDocument: 'after' },
+  );
 
-  // Aggiorna weeklyXp nella lega corrente (fire-and-forget)
-  try {
-    const activeSeason = await LeagueSeason.findOne({ active: true });
-    if (activeSeason) {
-      await LeagueMembership.updateOne(
-        { playerId, seasonId: activeSeason._id },
-        { $inc: { weeklyXp: xpAwarded } },
-      );
-    }
-  } catch {
-    // non bloccare la risposta se la lega non è configurata
-  }
+  await addWeeklyXpToLeague(playerId, xpAwarded);
 
   return {
-    xpAwarded,
-    coinsAwarded,
-    streakMultiplier: multiplier,
-    currentStreak: player.currentStreak,
-    longestStreak: player.longestStreak,
-    newLevel: levelUp ? newLevelData.level : null,
-    levelTitle: newLevelData.title,
-    totalXp: player.xp,
-    shieldEarned: earnShield,
-    shieldConsumed: streakUpdate.shieldConsumed,
-    streakBroken: streakUpdate.streakBroken,
+    gamification: {
+      xpAwarded,
+      coinsAwarded,
+      streakMultiplier: multiplier,
+      currentStreak: player.currentStreak,
+      longestStreak: player.longestStreak,
+      newLevel: levelUp ? newLevelData.level : null,
+      levelTitle: newLevelData.title,
+      totalXp: player.xp,
+      shieldEarned: earnShield,
+      shieldConsumed: streakUpdate.shieldConsumed,
+      streakBroken: streakUpdate.streakBroken,
+    },
+    totalPoints: updated?.totalPoints ?? player.totalPoints + coinsAwarded,
   };
+}
+
+/**
+ * Risultato dell'accredito diretto di XP e monete.
+ */
+export interface XpCoinsAwardResult {
+  totalXp: number;
+  totalPoints: number;
+  level: number;
+}
+
+/**
+ * Accredita XP e monete fuori dal flusso di completamento quest
+ * (onboarding, missioni giornaliere, eventi).
+ *
+ * Mantiene gli invarianti che applyGamification garantisce per i
+ * completamenti: il livello viene ricalcolato dagli XP aggiornati e gli
+ * XP confluiscono nel weeklyXp della lega corrente. Senza questo helper
+ * il campo level resterebbe stantio rispetto a levelTitle (calcolato
+ * dagli XP a ogni lettura del profilo).
+ */
+export async function awardXpAndCoins(
+  playerId: string,
+  xpAmount: number,
+  coinsAmount: number,
+): Promise<XpCoinsAwardResult> {
+  const updated = await Player.findByIdAndUpdate(
+    playerId,
+    { $inc: { xp: xpAmount, totalPoints: coinsAmount } },
+    { returnDocument: 'after' },
+  );
+  if (!updated) {
+    throw new NotFoundError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
+  }
+
+  const levelData = computeLevelFromXp(updated.xp);
+  if (levelData.level !== updated.level) {
+    await Player.updateOne({ _id: playerId }, { level: levelData.level });
+  }
+
+  if (xpAmount > 0) {
+    await addWeeklyXpToLeague(playerId, xpAmount);
+  }
+
+  return { totalXp: updated.xp, totalPoints: updated.totalPoints, level: levelData.level };
 }
 
 export interface StreakLazyResult {

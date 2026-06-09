@@ -22,6 +22,7 @@ import {
 import { Player, IUser, IPlayer, UserRole } from '../../../database/models/User.model';
 import { UnauthorizedError } from '../../../utils/errors';
 import { computeLevelFromXp, computeXpToNextLevel } from '../../../config/gamification';
+import { awardXpAndCoins } from '../../quests/services/gamification.service';
 
 /**
  * Serializza un utente per la response HTTP.
@@ -238,10 +239,16 @@ export async function completeOnboardingHandler(
       return;
     }
     player.onboardingCompleted = true;
-    player.xp += 100;
-    player.totalPoints = (player.totalPoints ?? 0) + 50;
     await player.save();
-    res.status(200).json({ xpAwarded: 100, coinsAwarded: 50 });
+    // awardXpAndCoins ricalcola anche il livello e aggiorna il weeklyXp
+    // della lega, mantenendo level coerente con gli XP.
+    const award = await awardXpAndCoins(String(player._id), 100, 50);
+    res.status(200).json({
+      xpAwarded: 100,
+      coinsAwarded: 50,
+      totalXp: award.totalXp,
+      totalPoints: award.totalPoints,
+    });
   } catch (err) {
     next(err);
   }

@@ -4,6 +4,7 @@ import {
   DailyQuestContext,
 } from '../../../database/models/DailyQuest.model';
 import { Player } from '../../../database/models/User.model';
+import { awardXpAndCoins } from './gamification.service';
 import { DAILY_QUEST_POOL } from '../../../config/daily-quests.config';
 import { NotFoundError } from '../../../utils/errors';
 import { DailyQuestAssignmentView } from '@trentino-quest/shared-types';
@@ -66,10 +67,18 @@ export async function getDailyQuests(
   };
 }
 
+export interface CompleteDailyQuestResult {
+  xpAwarded: number;
+  coinsAwarded: number;
+  totalXp: number;
+  totalPoints: number;
+  alreadyCompleted: boolean;
+}
+
 export async function completeDailyQuest(
   playerId: string,
   questType: DailyQuestType,
-): Promise<{ xpAwarded: number; coinsAwarded: number; alreadyCompleted: boolean }> {
+): Promise<CompleteDailyQuestResult> {
   const date = todayString();
   const assignment = await DailyQuestAssignment.findOne({ playerId, date });
   if (!assignment) {
@@ -82,16 +91,29 @@ export async function completeDailyQuest(
   }
 
   if (quest.completed) {
-    return { xpAwarded: 0, coinsAwarded: 0, alreadyCompleted: true };
+    const player = await Player.findById(playerId).select('xp totalPoints');
+    return {
+      xpAwarded: 0,
+      coinsAwarded: 0,
+      totalXp: player?.xp ?? 0,
+      totalPoints: player?.totalPoints ?? 0,
+      alreadyCompleted: true,
+    };
   }
 
   quest.completed = true;
   quest.completedAt = new Date();
   await assignment.save();
 
-  await Player.findByIdAndUpdate(playerId, {
-    $inc: { xp: quest.xpReward, totalPoints: quest.coinsReward },
-  });
+  // awardXpAndCoins ricalcola anche il livello e aggiorna il weeklyXp
+  // della lega: senza, level resterebbe stantio rispetto agli XP.
+  const award = await awardXpAndCoins(playerId, quest.xpReward, quest.coinsReward);
 
-  return { xpAwarded: quest.xpReward, coinsAwarded: quest.coinsReward, alreadyCompleted: false };
+  return {
+    xpAwarded: quest.xpReward,
+    coinsAwarded: quest.coinsReward,
+    totalXp: award.totalXp,
+    totalPoints: award.totalPoints,
+    alreadyCompleted: false,
+  };
 }

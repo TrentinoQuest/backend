@@ -264,8 +264,12 @@ export async function getCompletionsHeatmap(from: Date, to: Date): Promise<Heatm
 /* ----------------------------- Leaderboard ------------------------------ */
 
 /**
- * Restituisce i top N player per punti totali, ordinati discendenti.
+ * Restituisce i top N player per XP, ordinati discendenti.
+ *
+ * La classifica usa gli XP e non totalPoints: totalPoints rappresenta la
+ * valuta di gioco spendibile nel market, quindi ordinarci una classifica
+ * penalizzerebbe chi acquista coupon. Gli XP sono il progresso permanente.
  */
 export async function getLeaderboard(limit: number): Promise<IPlayer[]> {
-  return Player.find().sort({ totalPoints: -1 }).limit(limit);
+  return Player.find().sort({ xp: -1 }).limit(limit);
 }
