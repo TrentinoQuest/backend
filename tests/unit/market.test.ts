@@ -4,6 +4,7 @@ import {
   purchaseOffer,
   getMyCoupons,
   redeemCoupon,
+  getRedeemInfo,
 } from '../../src/modules/market/services/market.service';
 import { Offer, OfferStatus } from '../../src/database/models/Offer.model';
 import { Coupon } from '../../src/database/models/Coupon.model';
@@ -233,5 +234,57 @@ describe('getMyCoupons', () => {
 
     const coupons = await getMyCoupons(playerId);
     expect(coupons[0].status).toBe('expired');
+  });
+});
+
+// ── Atomicità riscatto e dati esercente ──────────────────────────────────────
+
+describe('redeemCoupon — atomicità e businessName', () => {
+  it('due riscatti concorrenti dello stesso token: uno solo riesce', async () => {
+    const playerId = await createPlayer('cc1');
+    const bizId = await createBusiness('cc1');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    const results = await Promise.allSettled([
+      redeemCoupon(coupon.token),
+      redeemCoupon(coupon.token),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({
+      code: 'COUPON_ALREADY_REDEEMED',
+    });
+  });
+
+  it('include il nome reale della attività nel coupon riscattato', async () => {
+    const playerId = await createPlayer('bn1');
+    const bizId = await createBusiness('bn1');
+    const business = await Business.findById(bizId);
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    const redeemed = await redeemCoupon(coupon.token);
+
+    expect(redeemed.businessName).toBe(business?.businessName);
+    expect(redeemed.businessName).not.toBe('');
+  });
+
+  it('getRedeemInfo espone il nome della attività per la pagina esercente', async () => {
+    const playerId = await createPlayer('bn2');
+    const bizId = await createBusiness('bn2');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    const info = await getRedeemInfo(coupon.token);
+
+    expect(info.businessName).not.toBe('');
+    expect(info.coupon.businessName).toBe(info.businessName);
   });
 });

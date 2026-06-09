@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
 import { Coupon, ICoupon } from '../../../database/models/Coupon.model';
 import { Offer, OfferStatus } from '../../../database/models/Offer.model';
-import { Player } from '../../../database/models/User.model';
+import { Player, Business } from '../../../database/models/User.model';
 import { listOffersForPlayers } from '../../business/services/business.service';
 import { NotFoundError, ConflictError, BadRequestError } from '../../../utils/errors';
 import { CouponView } from '@trentino-quest/shared-types';
@@ -101,14 +101,25 @@ export async function purchaseOffer(playerId: string, offerId: string): Promise<
 
   const token = randomUUID();
   const now = new Date();
-  const coupon = await Coupon.create({
-    offerId: offer._id,
-    playerId,
-    token,
-    pointsCost: offer.pointsCost,
-    purchasedAt: now,
-    expiresAt: new Date(now.getTime() + COUPON_TTL_MS),
-  });
+  let coupon: ICoupon;
+  try {
+    coupon = await Coupon.create({
+      offerId: offer._id,
+      playerId,
+      token,
+      pointsCost: offer.pointsCost,
+      purchasedAt: now,
+      expiresAt: new Date(now.getTime() + COUPON_TTL_MS),
+    });
+  } catch (err) {
+    // Compensazione: senza il coupon il giocatore non deve perdere ne'
+    // i punti spesi ne' il posto nella disponibilita' dell'offerta.
+    await Player.updateOne({ _id: playerId }, { $inc: { totalPoints: offer.pointsCost } });
+    if (offer.remaining !== null) {
+      await Offer.updateOne({ _id: offerId }, { $inc: { remaining: 1 } });
+    }
+    throw err;
+  }
 
   return serializeCoupon(coupon, offer.title);
 }
@@ -132,6 +143,17 @@ export async function getMyCoupons(playerId: string): Promise<CouponView[]> {
   });
 }
 
+/**
+ * Risolve il nome dell'attivita' proprietaria di un'offerta.
+ * La pagina di riscatto e' rivolta all'esercente: senza il nome
+ * dell'attivita' non puo' verificare che il coupon sia suo.
+ */
+async function findBusinessName(businessId: Types.ObjectId | undefined): Promise<string> {
+  if (!businessId) return '';
+  const business = await Business.findById(businessId).select('businessName');
+  return business?.businessName ?? '';
+}
+
 export async function getRedeemInfo(token: string): Promise<{
   coupon: CouponView;
   offerTitle: string;
@@ -146,29 +168,41 @@ export async function getRedeemInfo(token: string): Promise<{
     businessId?: Types.ObjectId;
   } | null;
 
+  const businessName = await findBusinessName(offer?.businessId);
+
   return {
-    coupon: serializeCoupon(coupon, offer?.title ?? ''),
+    coupon: serializeCoupon(coupon, offer?.title ?? '', businessName),
     offerTitle: offer?.title ?? '',
-    businessName: '',
+    businessName,
   };
 }
 
 export async function redeemCoupon(token: string): Promise<CouponView> {
   const now = new Date();
-  const coupon = await Coupon.findOne({ token }).populate('offerId', 'title');
-  if (!coupon) throw new NotFoundError('Coupon non trovato', 'COUPON_NOT_FOUND');
 
-  if (coupon.status === 'redeemed') {
-    throw new ConflictError('Coupon già riscattato', 'COUPON_ALREADY_REDEEMED');
-  }
-  if (coupon.status === 'expired' || coupon.expiresAt < now) {
+  // Transizione atomica active → redeemed: il filtro su status e scadenza
+  // garantisce che due riscatti concorrenti dello stesso token non possano
+  // entrambi riuscire (il vecchio findOne + save aveva questa race).
+  const coupon = await Coupon.findOneAndUpdate(
+    { token, status: 'active', expiresAt: { $gte: now } },
+    { status: 'redeemed', redeemedAt: now },
+    { returnDocument: 'after' },
+  ).populate('offerId', 'title businessId');
+
+  if (!coupon) {
+    // Distingue il motivo del fallimento per dare il codice corretto
+    const existing = await Coupon.findOne({ token });
+    if (!existing) throw new NotFoundError('Coupon non trovato', 'COUPON_NOT_FOUND');
+    if (existing.status === 'redeemed') {
+      throw new ConflictError('Coupon già riscattato', 'COUPON_ALREADY_REDEEMED');
+    }
     throw new ConflictError('Coupon scaduto', 'COUPON_EXPIRED');
   }
 
-  coupon.status = 'redeemed';
-  coupon.redeemedAt = now;
-  await coupon.save();
-
-  const offer = coupon.offerId as unknown as { title?: string } | null;
-  return serializeCoupon(coupon, offer?.title ?? '');
+  const offer = coupon.offerId as unknown as {
+    title?: string;
+    businessId?: Types.ObjectId;
+  } | null;
+  const businessName = await findBusinessName(offer?.businessId);
+  return serializeCoupon(coupon, offer?.title ?? '', businessName);
 }
