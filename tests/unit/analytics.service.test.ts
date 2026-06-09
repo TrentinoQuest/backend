@@ -426,19 +426,22 @@ describe('getLeaderboardForAdmin', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('ordina i player per totalPoints discendente', async () => {
+  it('ordina i player per xp discendente (totalPoints è valuta spendibile)', async () => {
     const p1 = await createTestPlayer({ email: 'p1@test.com', username: 'usr1' });
     const p2 = await createTestPlayer({ email: 'p2@test.com', username: 'usr2' });
     const p3 = await createTestPlayer({ email: 'p3@test.com', username: 'usr3' });
 
-    await Player.findByIdAndUpdate(p1._id, { totalPoints: 50 });
-    await Player.findByIdAndUpdate(p2._id, { totalPoints: 300 });
-    await Player.findByIdAndUpdate(p3._id, { totalPoints: 150 });
+    // p1 ha più monete ma meno xp: NON deve essere primo, la classifica
+    // misura il progresso (xp), non il portafoglio.
+    await Player.findByIdAndUpdate(p1._id, { totalPoints: 900, xp: 50 });
+    await Player.findByIdAndUpdate(p2._id, { totalPoints: 10, xp: 300 });
+    await Player.findByIdAndUpdate(p3._id, { totalPoints: 100, xp: 150 });
 
     const result = await getLeaderboardForAdmin(10);
-    expect(result[0].totalPoints).toBe(300);
-    expect(result[1].totalPoints).toBe(150);
-    expect(result[2].totalPoints).toBe(50);
+    expect(result[0].xp).toBe(300);
+    expect(result[1].xp).toBe(150);
+    expect(result[2].xp).toBe(50);
+    expect(result[0].username).toBe('usr2');
   });
 
   it('rispetta il parametro limit', async () => {
