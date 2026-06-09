@@ -7,7 +7,12 @@ import { Friendship } from '../../../database/models/Friendship.model';
 import { Collectible } from '../../../database/models/Collectible.model';
 import { Player } from '../../../database/models/User.model';
 import { sendPushNotification } from '../../../config/firebase';
-import { NotFoundError, BadRequestError, ForbiddenError } from '../../../utils/errors';
+import {
+  NotFoundError,
+  BadRequestError,
+  ForbiddenError,
+  ConflictError,
+} from '../../../utils/errors';
 import { CoopChallengeView } from '@trentino-quest/shared-types';
 import { CollectibleRarity, CollectibleStatus } from '../../../database/models/Collectible.model';
 
@@ -48,8 +53,27 @@ export async function createCoopChallenge(
   partnerId: string,
   type: CoopChallengeType,
 ): Promise<CoopChallengeView> {
+  if (initiatorId === partnerId) {
+    throw new BadRequestError('Non puoi sfidare te stesso', 'CANNOT_CHALLENGE_SELF');
+  }
   if (!(await areFriends(initiatorId, partnerId))) {
     throw new ForbiddenError('Il partner deve essere un amico', 'NOT_FRIENDS');
+  }
+
+  // Una sola sfida attiva per coppia (in qualsiasi direzione): senza
+  // questo guard la stessa coppia potrebbe accumulare sfide duplicate.
+  const existing = await CoopChallenge.findOne({
+    status: 'active',
+    $or: [
+      { initiatorId, partnerId },
+      { initiatorId: partnerId, partnerId: initiatorId },
+    ],
+  });
+  if (existing) {
+    throw new ConflictError(
+      'Esiste già una sfida attiva con questo partner',
+      'CHALLENGE_ALREADY_ACTIVE',
+    );
   }
 
   const meta = COOP_CHALLENGE_META[type];
@@ -123,37 +147,70 @@ export async function addProgress(
     throw new ForbiddenError('Non sei parte di questa sfida', 'NOT_PARTICIPANT');
   }
 
-  if (isInitiator) {
-    c.initiatorProgress += value;
-  } else {
-    c.partnerProgress += value;
+  // $inc atomico sul campo del partecipante: due richieste concorrenti
+  // non si sovrascrivono a vicenda (il vecchio load-modify-save perdeva
+  // aggiornamenti). Il filtro su status active evita progressi su sfide
+  // chiuse nel frattempo.
+  const progressField = isInitiator ? 'initiatorProgress' : 'partnerProgress';
+  const updated = await CoopChallenge.findOneAndUpdate(
+    { _id: challengeId, status: 'active' },
+    { $inc: { [progressField]: value } },
+    { returnDocument: 'after' },
+  );
+  if (!updated) throw new BadRequestError('Sfida non attiva', 'CHALLENGE_NOT_ACTIVE');
+
+  const total = updated.initiatorProgress + updated.partnerProgress;
+  if (total >= updated.targetValue) {
+    await completeChallenge(updated);
   }
 
-  const total = c.initiatorProgress + c.partnerProgress;
-  if (total >= c.targetValue && c.status === 'active') {
-    c.status = 'completed';
+  const fresh = await CoopChallenge.findById(challengeId);
+  return serializeChallenge(fresh ?? updated);
+}
 
-    // Assegna collezionabile esclusivo se disponibile
-    const rareColl = await Collectible.findOne({
-      rarity: { $in: [CollectibleRarity.RARE, CollectibleRarity.LEGENDARY] },
-      status: CollectibleStatus.ACTIVE,
-    });
-    if (rareColl) c.rewardCollectibleId = rareColl._id;
+/**
+ * Transizione atomica a 'completed' con assegnazione del premio.
+ *
+ * Il filtro su status active garantisce che, anche con due richieste
+ * concorrenti che superano il target, una sola esegua gli effetti
+ * collaterali (scelta premio + notifiche).
+ */
+async function completeChallenge(challenge: InstanceType<typeof CoopChallenge>): Promise<void> {
+  // Premio scelto casualmente tra i collezionabili rari/leggendari attivi
+  // ($sample, invece del primo trovato che era sempre lo stesso).
+  const [rareColl] = await Collectible.aggregate<{ _id: unknown }>([
+    {
+      $match: {
+        rarity: { $in: [CollectibleRarity.RARE, CollectibleRarity.LEGENDARY] },
+        status: CollectibleStatus.ACTIVE,
+      },
+    },
+    { $sample: { size: 1 } },
+  ]);
 
-    for (const pid of [String(c.initiatorId), String(c.partnerId)]) {
-      const player = await Player.findById(pid).select('fcmToken');
-      if (player?.fcmToken) {
-        await sendPushNotification(
-          player.fcmToken,
-          'Missione Completata!',
-          'Avete sbloccato un collezionabile esclusivo.',
-        );
-      }
+  const completed = await CoopChallenge.findOneAndUpdate(
+    { _id: challenge._id, status: 'active' },
+    {
+      status: 'completed',
+      completedAt: new Date(),
+      rewardCollectibleId: rareColl ? rareColl._id : null,
+    },
+    { returnDocument: 'after' },
+  );
+  if (!completed) return; // un'altra richiesta ha già completato
+
+  for (const pid of [String(completed.initiatorId), String(completed.partnerId)]) {
+    const player = await Player.findById(pid).select('fcmToken');
+    if (player?.fcmToken) {
+      await sendPushNotification(
+        player.fcmToken,
+        'Missione Completata!',
+        completed.rewardCollectibleId
+          ? 'Avete sbloccato un collezionabile esclusivo.'
+          : 'Avete completato la sfida cooperativa!',
+      );
     }
   }
-
-  await c.save();
-  return serializeChallenge(c);
 }
 
 export async function nudgePartner(fromPlayerId: string, partnerId: string): Promise<void> {

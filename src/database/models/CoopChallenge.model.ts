@@ -41,6 +41,8 @@ export interface ICoopChallenge extends Document {
   status: 'active' | 'completed' | 'expired';
   startedAt: Date;
   expiresAt: Date;
+  /** Popolato al raggiungimento del target: data di sblocco del premio. */
+  completedAt: Date | null;
   rewardCollectibleId: Types.ObjectId | null;
 }
 
@@ -57,6 +59,7 @@ const coopChallengeSchema = new Schema<ICoopChallenge>(
     status: { type: String, enum: ['active', 'completed', 'expired'], default: 'active' },
     startedAt: { type: Date, default: Date.now },
     expiresAt: { type: Date, required: true },
+    completedAt: { type: Date, default: null },
     rewardCollectibleId: { type: Schema.Types.ObjectId, ref: 'Collectible', default: null },
   },
   { collection: 'coop_challenges' },

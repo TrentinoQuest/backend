@@ -23,7 +23,10 @@ const createChallengeSchema = z
   })
   .strict();
 
-const progressSchema = z.object({ value: z.number().int().min(1) }).strict();
+// value e' auto-dichiarato dal client (km percorsi, quest completate):
+// il limite superiore impedisce di completare una sfida con una singola
+// chiamata artefatta.
+const progressSchema = z.object({ value: z.number().int().min(1).max(10) }).strict();
 
 export async function createCoopChallengeHandler(
   req: Request,

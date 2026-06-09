@@ -8,6 +8,10 @@ import {
   nudgePartner,
 } from '../../src/modules/coop/services/coop.service';
 import { Friendship } from '../../src/database/models/Friendship.model';
+import { Player } from '../../src/database/models/User.model';
+import { getPlayerCollection } from '../../src/modules/quests/services/player-profile.service';
+import { createTestCollectible } from '../fixtures';
+import { CollectibleRarity } from '../../src/database/models/Collectible.model';
 import { CoopChallengeType, CoopChallenge } from '../../src/database/models/CoopChallenge.model';
 import { Types } from 'mongoose';
 
@@ -254,5 +258,71 @@ describe('nudgePartner', () => {
     });
     expect(friendship?.lastNudgeAt).toBeDefined();
     expect(friendship?.lastNudgeAt?.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+});
+
+// ── Guard duplicati e premio ──────────────────────────────────────────────────
+
+describe('createCoopChallenge — guard duplicati', () => {
+  it('rifiuta una seconda sfida attiva con lo stesso partner', async () => {
+    const a = await createPlayer('dup1');
+    const b = await createPlayer('dup2');
+    await makeFriends(a, b);
+
+    await createCoopChallenge(a, b, CoopChallengeType.COMPLETE_10);
+
+    await expect(createCoopChallenge(a, b, CoopChallengeType.WALK_50KM)).rejects.toMatchObject({
+      code: 'CHALLENGE_ALREADY_ACTIVE',
+    });
+    // anche nella direzione inversa
+    await expect(createCoopChallenge(b, a, CoopChallengeType.WALK_50KM)).rejects.toMatchObject({
+      code: 'CHALLENGE_ALREADY_ACTIVE',
+    });
+  });
+
+  it('rifiuta la sfida con se stessi', async () => {
+    const a = await createPlayer('self1');
+    await expect(createCoopChallenge(a, a, CoopChallengeType.COMPLETE_10)).rejects.toMatchObject({
+      code: 'CANNOT_CHALLENGE_SELF',
+    });
+  });
+});
+
+describe('addProgress — completamento e premio', () => {
+  it('al raggiungimento del target assegna un premio che compare negli album di entrambi', async () => {
+    const a = await createPlayer('rw1');
+    const b = await createPlayer('rw2');
+    await makeFriends(a, b);
+
+    const rare = await createTestCollectible({ rarity: CollectibleRarity.RARE });
+    const view = await createCoopChallenge(a, b, CoopChallengeType.UNLOCK_5_RARE); // target 5
+
+    await addProgress(view.id, a, 3);
+    const finalView = await addProgress(view.id, b, 2);
+
+    expect(finalView.status).toBe('completed');
+    expect(finalView.rewardCollectibleId).toBe(String(rare._id));
+
+    // Il premio deve comparire nell'album di ENTRAMBI i partecipanti
+    const playerA = await Player.findById(a);
+    const playerB = await Player.findById(b);
+    const albumA = await getPlayerCollection(playerA as never);
+    const albumB = await getPlayerCollection(playerB as never);
+    expect(albumA.map((e) => String(e.collectible._id))).toContain(String(rare._id));
+    expect(albumB.map((e) => String(e.collectible._id))).toContain(String(rare._id));
+  });
+
+  it('non riapre né riassegna il premio se il target è già stato raggiunto', async () => {
+    const a = await createPlayer('rw3');
+    const b = await createPlayer('rw4');
+    await makeFriends(a, b);
+    await createTestCollectible({ rarity: CollectibleRarity.RARE });
+
+    const view = await createCoopChallenge(a, b, CoopChallengeType.UNLOCK_5_RARE);
+    await addProgress(view.id, a, 5);
+
+    await expect(addProgress(view.id, b, 1)).rejects.toMatchObject({
+      code: 'CHALLENGE_NOT_ACTIVE',
+    });
   });
 });
