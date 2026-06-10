@@ -228,6 +228,10 @@ components:
             totalPoints:
               type: integer
               minimum: 0
+              description: |
+                Valuta di gioco spendibile nel market (coupon). NON e' una
+                misura di progresso (per quello si usano xp e level);
+                diminuisce con gli acquisti.
             registrationDate:
               type: string
               format: date-time
@@ -1251,7 +1255,7 @@ components:
 
     LeaderboardEntry:
       type: object
-      required: [playerId, username, totalPoints]
+      required: [playerId, username, totalPoints, xp, level]
       properties:
         playerId:
           type: string
@@ -1260,6 +1264,16 @@ components:
         totalPoints:
           type: integer
           minimum: 0
+          description: Valuta posseduta (informativa, la classifica NON ordina su questo)
+        xp:
+          type: integer
+          minimum: 0
+          description: XP totali, criterio di ordinamento della classifica
+        level:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Livello corrente derivato dagli XP
 
     # ── Enums nuovi moduli ────────────────────────────────────────────────────
     LeagueTier:
@@ -3232,9 +3246,10 @@ paths:
   /admin/analytics/leaderboard:
     get:
       tags: [analytics]
-      summary: Classifica giocatori per punti (admin)
+      summary: Classifica giocatori per XP (admin)
       description: |
-        Top N giocatori ordinati per totalPoints decrescente.
+        Top N giocatori ordinati per xp decrescente. totalPoints e' incluso
+        come informazione sulla valuta posseduta ma non determina l'ordine.
       parameters:
         - name: limit
           in: query
