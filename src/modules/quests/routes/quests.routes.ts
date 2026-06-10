@@ -12,7 +12,11 @@ import {
   listPlayerCompletionsHandler,
   getPlayerCollectionHandler,
   getPlayerProgressHandler,
+  getValleyProgressHandler,
+  getDailyQuestsHandler,
+  completeDailyQuestHandler,
 } from '../controllers/player-profile.controller';
+import { completeOnboardingHandler } from '../../auth/controllers/auth.controller';
 import {
   listAdminQuestsHandler,
   getAdminQuestByIdHandler,
@@ -29,6 +33,7 @@ import {
   updatePositionHandler,
   reportIssueHandler,
 } from '../controllers/operator.controller';
+import { proximityHandler } from '../controllers/quest-proximity.controller';
 import {
   listAdminCollectiblesHandler,
   getAdminCollectibleHandler,
@@ -36,6 +41,7 @@ import {
   updateCollectibleHandler,
   archiveCollectibleHandler,
 } from '../controllers/collectible-admin.controller';
+import { generateQuestQrHandler } from '../controllers/quest-admin.controller';
 
 /**
  * Crea il router con gli endpoint del modulo quests.
@@ -59,6 +65,7 @@ export function createQuestsRouter(): Router {
   // IQuestCompletion - completamento riservato ai giocatori
   router.post('/quests/:id/check-in', authenticate, requireRole(UserRole.PLAYER), checkInHandler);
   router.post('/quests/:id/scan', authenticate, requireRole(UserRole.PLAYER), scanQrHandler);
+  router.get('/quests/:id/proximity', authenticate, requireRole(UserRole.PLAYER), proximityHandler);
 
   // IPlayerProfile - riservata ai giocatori
   router.get('/player/me', authenticate, requireRole(UserRole.PLAYER), getPlayerMeHandler);
@@ -79,6 +86,30 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.PLAYER),
     getPlayerProgressHandler,
+  );
+  router.get(
+    '/player/valley-progress',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    getValleyProgressHandler,
+  );
+  router.get(
+    '/player/daily-quests',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    getDailyQuestsHandler,
+  );
+  router.post(
+    '/player/daily-quests/:type/complete',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    completeDailyQuestHandler,
+  );
+  router.post(
+    '/onboarding/complete',
+    authenticate,
+    requireRole(UserRole.PLAYER),
+    completeOnboardingHandler,
   );
 
   // IQuestAdmin - tutte riservate agli amministratori
@@ -113,6 +144,13 @@ export function createQuestsRouter(): Router {
     authenticate,
     requireRole(UserRole.ADMIN),
     deactivateAdminQuestHandler,
+  );
+
+  router.post(
+    '/admin/quests/:id/generate-qr',
+    authenticate,
+    requireRole(UserRole.ADMIN),
+    generateQuestQrHandler,
   );
 
   // Lista collezionabili per dropdown nei form di creazione quest principali

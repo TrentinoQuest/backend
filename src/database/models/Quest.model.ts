@@ -193,7 +193,6 @@ const primaryQuestSchema = new Schema<IPrimaryQuest>({
   },
   qrToken: {
     type: String,
-    default: null,
     sparse: true,
     unique: true,
   },

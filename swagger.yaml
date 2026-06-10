@@ -31,7 +31,7 @@ info:
     TTL 30 giorni) e' usato solo verso /auth/refresh per rinnovare l'access
     token. La rotation dei refresh token e' attiva: ogni chiamata a
     /auth/refresh emette un nuovo refresh token e revoca quello precedente.
-  version: 0.5.0
+  version: 0.10.0
   contact:
     name: Gruppo 19 - Trentino Quest
 servers:
@@ -85,6 +85,28 @@ tags:
       Interfaccia IAnalytics fornita da AnalyticsService.
       Dashboard analitica per amministratori: flussi turistici, zone visitate,
       stagionalita, statistiche aggregate.
+  - name: daily-quests
+    description: |
+      Missioni giornaliere del giocatore. Ogni giorno vengono assegnate 3 missioni
+      casuali dal pool (in_trentino o out_of_region). Generazione lazy al primo
+      accesso della giornata.
+  - name: lore
+    description: |
+      Quiz della Lore: una domanda al giorno su storia, cultura e natura del
+      Trentino. La risposta corretta assegna monete e genera un Map Fragment.
+  - name: leagues
+    description: |
+      Leghe competitive settimanali. I giocatori sono raggruppati in gironi
+      da 30 per tier (Porfido, Marmo, Arenaria, Granito, Dolomiti). Il reset
+      avviene ogni lunedi.
+  - name: coop
+    description: |
+      Sfide cooperative tra coppie di amici. L'initiator propone una sfida
+      con scadenza 7 giorni; entrambi i partecipanti contribuiscono al progresso.
+  - name: market
+    description: |
+      Mercato coupon: i giocatori spendono monete per acquistare offerte dalle
+      Attivita Locali approvate. I coupon hanno vita di 48 ore.
 components:
   securitySchemes:
     bearerAuth:
@@ -197,7 +219,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/User'
         - type: object
-          required: [username, totalPoints, registrationDate]
+          required: [username, totalPoints, registrationDate, xp, level, levelTitle, currentStreak, longestStreak, streakShieldActive, xpToNextLevel]
           properties:
             username:
               type: string
@@ -206,9 +228,50 @@ components:
             totalPoints:
               type: integer
               minimum: 0
+              description: |
+                Valuta di gioco spendibile nel market (coupon). NON e' una
+                misura di progresso (per quello si usano xp e level);
+                diminuisce con gli acquisti.
             registrationDate:
               type: string
               format: date-time
+            xp:
+              type: integer
+              minimum: 0
+              description: XP totali accumulati (non si spendono mai)
+            level:
+              type: integer
+              minimum: 1
+              maximum: 10
+              description: Livello corrente derivato dagli XP
+            levelTitle:
+              type: string
+              description: Titolo del livello corrente (es. Esploratore)
+            currentStreak:
+              type: integer
+              minimum: 0
+              description: Giorni consecutivi con almeno una quest completata
+            longestStreak:
+              type: integer
+              minimum: 0
+              description: Record personale di streak
+            streakShieldActive:
+              type: boolean
+              description: Ha uno streak shield disponibile
+            xpToNextLevel:
+              type: integer
+              nullable: true
+              description: XP mancanti al prossimo livello, null se al livello massimo
+            onboardingCompleted:
+              type: boolean
+              description: Il player ha completato l'onboarding
+            currentLeagueTier:
+              $ref: '#/components/schemas/LeagueTier'
+            oauthProvider:
+              type: string
+              nullable: true
+              enum: [google, apple, null]
+              description: Provider OAuth usato per la registrazione, null se email+password
     Admin:
       allOf:
         - $ref: '#/components/schemas/User'
@@ -355,6 +418,15 @@ components:
           format: uri
         rarity:
           $ref: '#/components/schemas/CollectibleRarity'
+        lore:
+          type: string
+          nullable: true
+        coordinates:
+          type: object
+          nullable: true
+          properties:
+            lat: { type: number, format: double }
+            lng: { type: number, format: double }
     UpdateCollectibleRequest:
       type: object
       minProperties: 1
@@ -372,6 +444,15 @@ components:
           format: uri
         rarity:
           $ref: '#/components/schemas/CollectibleRarity'
+        lore:
+          type: string
+          nullable: true
+        coordinates:
+          type: object
+          nullable: true
+          properties:
+            lat: { type: number, format: double }
+            lng: { type: number, format: double }
     QuestBase:
       type: object
       description: Campi comuni a tutte le tipologie di quest.
@@ -416,6 +497,9 @@ components:
               nullable: true
             placementStatus:
               $ref: '#/components/schemas/PlacementStatus'
+            qrToken:
+              type: string
+              nullable: true
     SecondaryQuest:
       allOf:
         - $ref: '#/components/schemas/QuestBase'
@@ -457,6 +541,25 @@ components:
           $ref: '#/components/schemas/CollectibleRarity'
         status:
           $ref: '#/components/schemas/CollectibleStatus'
+        lore:
+          type: string
+          nullable: true
+          description: Testo narrativo per il retro della card del taccuino
+        coordinates:
+          type: object
+          nullable: true
+          description: Posizione geografica reale del luogo del collezionabile
+          properties:
+            lat:
+              type: number
+              format: double
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              format: double
+              minimum: -180
+              maximum: 180
         createdAt:
           type: string
           format: date-time
@@ -532,9 +635,53 @@ components:
               type: integer
               format: int64
               minimum: 1
+    GamificationResult:
+      type: object
+      required: [xpAwarded, coinsAwarded, streakMultiplier, currentStreak, longestStreak, newLevel, levelTitle, totalXp, shieldEarned, shieldConsumed, streakBroken]
+      properties:
+        xpAwarded:
+          type: integer
+          minimum: 0
+          description: XP assegnati per questo completamento (con moltiplicatore incluso)
+        streakMultiplier:
+          type: number
+          format: double
+          description: Moltiplicatore streak applicato (es. 1.25)
+        currentStreak:
+          type: integer
+          minimum: 0
+          description: Streak corrente dopo il completamento
+        longestStreak:
+          type: integer
+          minimum: 0
+          description: Record personale di streak
+        newLevel:
+          type: integer
+          nullable: true
+          description: Nuovo livello raggiunto con questo completamento, null se nessun level-up
+        levelTitle:
+          type: string
+          description: Titolo del livello attuale dopo il completamento
+        totalXp:
+          type: integer
+          minimum: 0
+          description: XP totali dopo il completamento
+        shieldEarned:
+          type: boolean
+          description: Ha guadagnato uno streak shield con questo completamento
+        shieldConsumed:
+          type: boolean
+          description: Uno streak shield e' stato consumato (gap di inattivita' coperto)
+        streakBroken:
+          type: boolean
+          description: La streak si e' azzerata (per info al client)
+        coinsAwarded:
+          type: integer
+          minimum: 0
+          description: Monete assegnate per questo completamento (10 secondary, 25 primary, moltiplicatore incluso)
     CheckInResponse:
       type: object
-      required: [completion, pointsAwarded, totalPoints, distanceFromTargetMeters]
+      required: [completion, pointsAwarded, totalPoints, distanceFromTargetMeters, gamification]
       properties:
         completion:
           $ref: '#/components/schemas/Completion'
@@ -544,6 +691,8 @@ components:
           type: integer
         distanceFromTargetMeters:
           type: number
+        gamification:
+          $ref: '#/components/schemas/GamificationResult'
     ScanQrRequest:
       type: object
       required: [qrToken, position]
@@ -574,7 +723,7 @@ components:
               minimum: 1
     ScanQrResponse:
       type: object
-      required: [completion, pointsAwarded, totalPoints, collectible, distanceFromTargetMeters]
+      required: [completion, pointsAwarded, totalPoints, collectible, distanceFromTargetMeters, gamification]
       properties:
         completion:
           $ref: '#/components/schemas/Completion'
@@ -586,6 +735,8 @@ components:
           $ref: '#/components/schemas/Collectible'
         distanceFromTargetMeters:
           type: number
+        gamification:
+          $ref: '#/components/schemas/GamificationResult'
     CreateSecondaryQuestRequest:
       type: object
       required: [type, name, description, basePoints, position, checkInRadiusMeters]
@@ -708,6 +859,7 @@ components:
         - searchArea
         - searchRadiusMeters
         - placementStatus
+        - qrToken
       properties:
         id:
           type: string
@@ -749,12 +901,20 @@ components:
               format: double
               minimum: -180
               maximum: 180
+        qrToken:
+          type: string
+          nullable: true
     PlaceQuestRequest:
       type: object
-      required: [exactPosition]
+      required:
+        - exactPosition
+        - scannedToken
       properties:
         exactPosition:
           $ref: '#/components/schemas/GeoPoint'
+        scannedToken:
+          type: string
+          nullable: true
         fix:
           type: object
           required: [accuracy, clientTimestamp]
@@ -957,6 +1117,643 @@ components:
           type: integer
         offset:
           type: integer
+    AnalyticsGranularity:
+      type: string
+      enum: [day, week, month]
+
+    AnalyticsSummary:
+      type: object
+      description: |
+        Riepilogo dei contatori globali del sistema: utenti, quest attive
+        (suddivise per tipo), completamenti, attivita affiliate,
+        collezionabili, quest in attesa di piazzamento.
+      required:
+        - totalPlayers
+        - totalActiveQuests
+        - totalActivePrimaryQuests
+        - totalActiveSecondaryQuests
+        - totalCompletions
+        - totalApprovedBusinesses
+        - totalCollectibles
+        - pendingPlacements
+      properties:
+        totalPlayers:
+          type: integer
+        totalActiveQuests:
+          type: integer
+        totalActivePrimaryQuests:
+          type: integer
+        totalActiveSecondaryQuests:
+          type: integer
+        totalCompletions:
+          type: integer
+        totalApprovedBusinesses:
+          type: integer
+        totalCollectibles:
+          type: integer
+        pendingPlacements:
+          type: integer
+
+    CompletionsOverTimePoint:
+      type: object
+      required: [date, count]
+      properties:
+        date:
+          type: string
+          format: date-time
+        count:
+          type: integer
+
+    CompletionsOverTimeResponse:
+      type: object
+      description: |
+        Serie temporale dei completamenti aggregata per granularita'
+        (day/week/month). Include sempre l'intervallo applicato per
+        facilitare il debug e il rendering nel frontend.
+      required: [granularity, from, to, data]
+      properties:
+        granularity:
+          $ref: '#/components/schemas/AnalyticsGranularity'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompletionsOverTimePoint'
+
+    TopQuestEntry:
+      type: object
+      required: [questId, name, type, completionCount]
+      properties:
+        questId:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestType'
+        completionCount:
+          type: integer
+
+    NeverCompletedQuestEntry:
+      type: object
+      description: |
+        Quest attiva per cui non esiste alcun completamento. Segnala
+        all'admin una potenziale "zona ignorata" (RF39).
+      required: [questId, name, type, createdAt]
+      properties:
+        questId:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestType'
+        createdAt:
+          type: string
+          format: date-time
+
+    CompletionsHeatmapPoint:
+      type: object
+      required: [lat, lng, completedAt]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        completedAt:
+          type: string
+          format: date-time
+
+    CompletionsHeatmapResponse:
+      type: object
+      description: |
+        Coordinate GPS dei giocatori al momento del completamento, usate
+        per renderizzare una heatmap dei flussi turistici. Le posizioni
+        non sono quelle delle quest ma quelle dei giocatori, cosi' da
+        riflettere il transito effettivo sul territorio.
+      required: [from, to, points]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompletionsHeatmapPoint'
+
+    LeaderboardEntry:
+      type: object
+      required: [playerId, username, totalPoints, xp, level]
+      properties:
+        playerId:
+          type: string
+        username:
+          type: string
+        totalPoints:
+          type: integer
+          minimum: 0
+          description: Valuta posseduta (informativa, la classifica NON ordina su questo)
+        xp:
+          type: integer
+          minimum: 0
+          description: XP totali, criterio di ordinamento della classifica
+        level:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Livello corrente derivato dagli XP
+
+    # ── Enums nuovi moduli ────────────────────────────────────────────────────
+    LeagueTier:
+      type: string
+      enum: [porfido, marmo, arenaria, granito, dolomiti]
+      description: |
+        Tier della lega competitiva (dal piu' basso al piu' alto):
+        porfido, marmo, arenaria, granito, dolomiti.
+
+    DailyQuestType:
+      type: string
+      enum: [walk_2km, find_secondary, reach_altitude, lore_quiz, flip_collectibles, send_kudos]
+
+    DailyQuestContext:
+      type: string
+      enum: [in_trentino, out_of_region, any]
+
+    CoopChallengeType:
+      type: string
+      enum: [walk_50km, complete_10_quests, unlock_5_rare]
+
+    # ── Modulo 4 — Fog of War / Valley Progress ───────────────────────────────
+    ValleyProgressItem:
+      type: object
+      required: [valleyId, name, completedCount, totalCount, percentage, entered]
+      properties:
+        valleyId:
+          type: string
+        name:
+          type: string
+        completedCount:
+          type: integer
+          minimum: 0
+        totalCount:
+          type: integer
+          minimum: 0
+        percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Percentuale di completamento arrotondata a intero
+        entered:
+          type: boolean
+          description: Il player ha almeno un completamento in questa valle
+
+    ValleyProgressResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValleyProgressItem'
+
+    # ── Modulo 5 — Daily Quests ───────────────────────────────────────────────
+    DailyQuestItem:
+      type: object
+      required: [type, title, description, xpReward, coinsReward, completed]
+      properties:
+        type:
+          $ref: '#/components/schemas/DailyQuestType'
+        title:
+          type: string
+        description:
+          type: string
+        xpReward:
+          type: integer
+          minimum: 0
+        coinsReward:
+          type: integer
+          minimum: 0
+        completed:
+          type: boolean
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    DailyQuestsResponse:
+      type: object
+      required: [date, quests]
+      properties:
+        date:
+          type: string
+          format: date
+          description: Giorno a cui appartengono le missioni (YYYY-MM-DD)
+        quests:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyQuestItem'
+          minItems: 3
+          maxItems: 3
+
+    CompleteDailyQuestResponse:
+      type: object
+      required: [xpAwarded, coinsAwarded, totalXp, totalPoints, alreadyCompleted]
+      properties:
+        xpAwarded:
+          type: integer
+          minimum: 0
+        coinsAwarded:
+          type: integer
+          minimum: 0
+        totalXp:
+          type: integer
+          minimum: 0
+          description: XP totali del giocatore dopo il completamento
+        totalPoints:
+          type: integer
+          minimum: 0
+          description: Saldo monete del giocatore dopo il completamento
+        alreadyCompleted:
+          type: boolean
+
+    # ── Modulo 6 — Lore Quiz ──────────────────────────────────────────────────
+    LoreAnswerResult:
+      type: object
+      required: [correct, correctOptionIndex, explanation]
+      properties:
+        correct:
+          type: boolean
+        correctOptionIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+        explanation:
+          type: string
+
+    LoreQuestionView:
+      type: object
+      required: [id, text, options, category, alreadyAnswered]
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+          minItems: 4
+          maxItems: 4
+        category:
+          type: string
+        alreadyAnswered:
+          type: boolean
+        result:
+          type: object
+          nullable: true
+          description: Presente solo se alreadyAnswered = true
+          allOf:
+            - $ref: '#/components/schemas/LoreAnswerResult'
+
+    MapFragment:
+      type: object
+      required: [questName, hint]
+      properties:
+        questName:
+          type: string
+        hint:
+          type: string
+          description: Indizio criptico sulla posizione della quest secondaria
+
+    LoreAnswerResponse:
+      type: object
+      required: [correct, correctOptionIndex, explanation, coinsAwarded]
+      properties:
+        correct:
+          type: boolean
+        correctOptionIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+        explanation:
+          type: string
+        coinsAwarded:
+          type: integer
+          minimum: 0
+          description: 50 se corretto, 0 se errato
+        mapFragment:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MapFragment'
+
+    # ── Modulo 7 — Leghe ─────────────────────────────────────────────────────
+    LeagueLeaderboardEntry:
+      type: object
+      required: [rank, playerId, username, weeklyXp, isCurrentPlayer, isFriend]
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+        playerId:
+          type: string
+        username:
+          type: string
+        weeklyXp:
+          type: integer
+          minimum: 0
+        isCurrentPlayer:
+          type: boolean
+        isFriend:
+          type: boolean
+          description: True se il player è nella lista amici accepted del richiedente
+
+    LeagueCurrentView:
+      type: object
+      required: [season, tier, groupId, rank, weeklyXp, leaderboard]
+      properties:
+        season:
+          type: object
+          required: [weekStart, weekEnd]
+          properties:
+            weekStart:
+              type: string
+              format: date-time
+            weekEnd:
+              type: string
+              format: date-time
+        tier:
+          $ref: '#/components/schemas/LeagueTier'
+        groupId:
+          type: string
+        rank:
+          type: integer
+          minimum: 1
+          description: Posizione corrente nel girone (calcolata in tempo reale)
+        weeklyXp:
+          type: integer
+          minimum: 0
+        leaderboard:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueLeaderboardEntry'
+          description: Tutti i 30 giocatori del girone ordinati per weeklyXp
+
+    LeagueHistoryEntry:
+      type: object
+      required: [seasonId, weekStart, weekEnd, tier, weeklyXp, promoted, relegated]
+      properties:
+        seasonId:
+          type: string
+        weekStart:
+          type: string
+          format: date-time
+        weekEnd:
+          type: string
+          format: date-time
+        tier:
+          $ref: '#/components/schemas/LeagueTier'
+        weeklyXp:
+          type: integer
+          minimum: 0
+        rank:
+          type: integer
+          nullable: true
+          description: Rank finale (null se la stagione non e' ancora terminata)
+        promoted:
+          type: boolean
+        relegated:
+          type: boolean
+
+    # ── Modulo 8 — Kudos ─────────────────────────────────────────────────────
+    KudosRequest:
+      type: object
+      required: [toPlayerId, activityType, activityId, emoji]
+      properties:
+        toPlayerId:
+          type: string
+        activityType:
+          type: string
+          enum: [quest_completion, collectible_unlock]
+        activityId:
+          type: string
+          description: ID del completamento o dello sblocco collezionabile
+        emoji:
+          type: string
+          enum: [beer, highfive, star]
+
+    # ── Modulo 9 — Social Feed ────────────────────────────────────────────────
+    FeedActivityItem:
+      type: object
+      required: [type, playerId, username, timestamp, activityId, kudosCount, myKudos]
+      properties:
+        type:
+          type: string
+          enum: [quest_completion, collectible_unlock]
+        playerId:
+          type: string
+        username:
+          type: string
+        questName:
+          type: string
+          description: Presente se type = quest_completion
+        collectibleName:
+          type: string
+          description: Presente se type = collectible_unlock
+        collectibleRarity:
+          $ref: '#/components/schemas/CollectibleRarity'
+          description: Presente se type = collectible_unlock
+        timestamp:
+          type: string
+          format: date-time
+        activityId:
+          type: string
+          description: ID usato per inviare kudos a questa attivita
+        kudosCount:
+          type: integer
+          minimum: 0
+        myKudos:
+          type: boolean
+          description: Il player autenticato ha gia inviato kudos per questa attivita
+
+    SocialLeaderboardEntry:
+      type: object
+      required: [rank, playerId, username, socialScore, questCompletions, isCurrentPlayer]
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+        playerId:
+          type: string
+        username:
+          type: string
+        socialScore:
+          type: integer
+          minimum: 0
+          description: Completamenti ponderati (primary × 2, secondary × 1)
+        questCompletions:
+          type: integer
+          minimum: 0
+        isCurrentPlayer:
+          type: boolean
+
+    ProximityZone:
+      type: string
+      enum: [outside_area, cold, warm, hot, burning]
+      description: |
+        Zona di prossimità categorica. Mai rivela la distanza in metri.
+        - outside_area: fuori dalla searchArea
+        - cold: dentro searchArea, distanza > 60% del raggio
+        - warm: distanza 30-60% del raggio
+        - hot: distanza 10-30% del raggio
+        - burning: distanza < 10% del raggio (QR a portata)
+
+    ProximityResponse:
+      type: object
+      required: [zone]
+      properties:
+        zone:
+          $ref: '#/components/schemas/ProximityZone'
+
+    # ── Modulo 10 — Coop ─────────────────────────────────────────────────────
+    CoopChallengeView:
+      type: object
+      required: [id, initiatorId, partnerId, type, title, description, targetValue, initiatorProgress, partnerProgress, totalPercentage, status, startedAt, expiresAt]
+      properties:
+        id:
+          type: string
+        initiatorId:
+          type: string
+        partnerId:
+          type: string
+        type:
+          $ref: '#/components/schemas/CoopChallengeType'
+        title:
+          type: string
+        description:
+          type: string
+        targetValue:
+          type: integer
+          minimum: 1
+        initiatorProgress:
+          type: integer
+          minimum: 0
+        partnerProgress:
+          type: integer
+          minimum: 0
+        totalPercentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        status:
+          type: string
+          enum: [active, completed, expired]
+        startedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        rewardCollectibleId:
+          type: string
+          nullable: true
+
+    CreateCoopChallengeRequest:
+      type: object
+      required: [partnerId, type]
+      properties:
+        partnerId:
+          type: string
+        type:
+          $ref: '#/components/schemas/CoopChallengeType'
+
+    AddProgressRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: integer
+          minimum: 1
+          description: Incremento del progresso del player chiamante
+
+    # ── Modulo 11 — Mercato Coupon ────────────────────────────────────────────
+    OfferWithRemaining:
+      allOf:
+        - $ref: '#/components/schemas/OfferWithBusiness'
+        - type: object
+          properties:
+            remaining:
+              type: integer
+              nullable: true
+              minimum: 0
+              description: Coupon disponibili (null = illimitato)
+
+    CouponView:
+      type: object
+      required: [id, offerId, token, pointsCost, status, purchasedAt, expiresAt]
+      properties:
+        id:
+          type: string
+        offerId:
+          type: string
+        offerTitle:
+          type: string
+        businessName:
+          type: string
+        token:
+          type: string
+          description: Token UUID da codificare come QR sul client
+        pointsCost:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, redeemed, expired]
+        purchasedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        redeemedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CouponRedeemInfo:
+      type: object
+      description: Info del coupon restituita all'esercente prima del riscatto
+      required: [token, status, expiresAt, offerTitle, businessName]
+      properties:
+        token:
+          type: string
+        status:
+          type: string
+          enum: [active, redeemed, expired]
+        expiresAt:
+          type: string
+          format: date-time
+        offerTitle:
+          type: string
+        businessName:
+          type: string
+        redeemedAt:
+          type: string
+          format: date-time
+          nullable: true
+
   responses:
     Unauthorized:
       description: Token JWT mancante o non valido.
@@ -1144,6 +1941,132 @@ paths:
             un link di recupero.
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /auth/password-reset:
+    post:
+      tags: [auth]
+      summary: Completa il reset della password
+      description: |
+        Imposta una nuova password a partire dal token monouso ricevuto
+        via link di recovery. Il token scade dopo un'ora e puo' essere
+        usato una sola volta. Al reset tutte le sessioni attive (refresh
+        token) dell'utente vengono revocate.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                  description: Token di reset ricevuto via link di recovery
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: Nuova password (almeno 8 caratteri, una lettera e un numero)
+      responses:
+        '204':
+          description: Password aggiornata e sessioni revocate
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Token di reset non valido, scaduto o gia' usato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/oauth/google:
+    post:
+      tags: [auth]
+      summary: Login/registrazione tramite Google OAuth
+      description: |
+        Il client mobile ottiene un idToken da Google SDK (Capacitor) e lo invia
+        al backend. Il backend verifica il token, crea o recupera il Player,
+        e restituisce la coppia access+refresh token.
+        In sviluppo locale con SKIP_OAUTH_VERIFICATION=true si può usare un
+        JWT firmato con qualsiasi segreto purché contenga email e sub.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: ID token ottenuto da Google SDK
+      responses:
+        '200':
+          description: Login/registrazione riuscita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Token non valido o GOOGLE_CLIENT_ID non configurato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/oauth/apple:
+    post:
+      tags: [auth]
+      summary: Login/registrazione tramite Apple Sign In
+      description: |
+        Il client mobile ottiene un identity token da Apple SDK (Capacitor)
+        e lo invia al backend. Il backend verifica la firma tramite le
+        chiavi pubbliche JWKS di Apple, crea o recupera il Player e
+        restituisce la coppia access+refresh token.
+        Apple invia nome e cognome SOLO al primo login: per questo i campi
+        firstName/lastName sono opzionali.
+        In sviluppo locale con SKIP_OAUTH_VERIFICATION=true si puo' usare un
+        JWT firmato con qualsiasi segreto purche' contenga email e sub.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: Identity token ottenuto da Apple SDK
+                firstName:
+                  type: string
+                  description: Nome (presente solo al primo login)
+                lastName:
+                  type: string
+                  description: Cognome (presente solo al primo login)
+      responses:
+        '200':
+          description: Login/registrazione riuscita
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Token non valido o APPLE_CLIENT_ID non configurato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email gia' registrata con un altro metodo di accesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /quests:
     get:
       tags: [quest-completion]
@@ -1297,6 +2220,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /quests/{id}/proximity:
+    get:
+      tags: [quest-completion]
+      summary: Feedback di prossimità al QR
+      description: |
+        Restituisce una zona categorica che indica quanto il giocatore è vicino
+        al QR fisico della quest, senza mai rivelare coordinate esatte o distanza
+        in metri. Utilizzato per il radar di ricerca.
+        Solo per quest di tipo primary attive.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+          description: Latitudine del giocatore
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+          description: Longitudine del giocatore
+      responses:
+        '200':
+          description: Zona di prossimità calcolata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProximityResponse'
+        '400':
+          description: Quest non è di tipo primary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quest non trovata o non attiva
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /player/me:
     get:
       tags: [player-profile]
@@ -1390,7 +2361,7 @@ paths:
             $ref: '#/components/schemas/QuestStatus'
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 500, default: 20 }
         - name: offset
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -2125,3 +3096,1033 @@ paths:
                   $ref: '#/components/schemas/OfferWithBusiness'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /admin/analytics/summary:
+    get:
+      tags: [analytics]
+      summary: Riepilogo contatori globali (admin)
+      description: |
+        Restituisce i contatori globali del sistema per la dashboard
+        di benvenuto dell'admin: utenti, quest attive, completamenti,
+        attivita affiliate, collezionabili, quest pending.
+      responses:
+        '200':
+          description: Contatori globali
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/completions-over-time:
+    get:
+      tags: [analytics]
+      summary: Serie temporale dei completamenti (admin)
+      description: |
+        Aggregazione dei completamenti per giorno/settimana/mese
+        nell'intervallo richiesto. Default: ultimi 30 giorni,
+        granularita' day. Include anche completamenti di quest archiviate
+        (un completamento e' un evento storico avvenuto). Risponde al
+        requisito RF39 di stagionalita'.
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Inizio intervallo in formato YYYY-MM-DD (default 30 giorni prima di "to")
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Fine intervallo in formato YYYY-MM-DD (default oggi)
+        - name: granularity
+          in: query
+          schema:
+            $ref: '#/components/schemas/AnalyticsGranularity'
+          description: Granularita' di aggregazione (default day)
+      responses:
+        '200':
+          description: Serie temporale
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletionsOverTimeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/top-quests:
+    get:
+      tags: [analytics]
+      summary: Quest piu' completate (admin)
+      description: |
+        Top N quest per numero di completamenti, in ordine decrescente.
+        Include anche completamenti di quest archiviate. Default limit 10.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: Top quest
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TopQuestEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/never-completed-quests:
+    get:
+      tags: [analytics]
+      summary: Quest attive mai completate (admin)
+      description: |
+        Lista delle quest in stato active per cui non esiste alcun
+        completamento. Segnala zone potenzialmente "ignorate" dai
+        giocatori (RF39). Non considera quest inactive o archived.
+      responses:
+        '200':
+          description: Quest mai completate
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NeverCompletedQuestEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/completions-heatmap:
+    get:
+      tags: [analytics]
+      summary: Heatmap dei completamenti (admin)
+      description: |
+        Punti GPS dei completamenti nell'intervallo richiesto, per
+        renderizzare una heatmap dei flussi turistici. Default: ultimi
+        90 giorni. Le coordinate sono quelle del giocatore al momento
+        del completamento (non quelle della quest), cosi' la heatmap
+        riflette il transito effettivo sul territorio.
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Inizio intervallo in formato YYYY-MM-DD (default 90 giorni fa)
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Fine intervallo in formato YYYY-MM-DD (default oggi)
+      responses:
+        '200':
+          description: Punti heatmap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletionsHeatmapResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics/leaderboard:
+    get:
+      tags: [analytics]
+      summary: Classifica giocatori per XP (admin)
+      description: |
+        Top N giocatori ordinati per xp decrescente. totalPoints e' incluso
+        come informazione sulla valuta posseduta ma non determina l'ordine.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: Top giocatori
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Modulo 1 — Device Token ────────────────────────────────────────────────
+  /auth/device-token:
+    post:
+      tags: [auth]
+      summary: Salva il device token FCM per le notifiche push
+      description: |
+        Registra o aggiorna il token FCM del dispositivo del player autenticato.
+        Idempotente: chiamate successive sovrascrivono il token precedente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fcmToken]
+              properties:
+                fcmToken:
+                  type: string
+                  description: Token Firebase Cloud Messaging del dispositivo
+      responses:
+        '204':
+          description: Token salvato
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Modulo 2 — Onboarding ─────────────────────────────────────────────────
+  /onboarding/complete:
+    post:
+      tags: [player-profile]
+      summary: Completa l'onboarding e assegna i premi iniziali
+      description: |
+        Segna l'onboarding come completato e assegna +100 XP e +50 monete
+        (l'Amuleto del Viandante). Idempotente: se gia completato risponde
+        200 senza riassegnare premi.
+      responses:
+        '200':
+          description: Onboarding completato (o gia completato in precedenza)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [onboardingCompleted, alreadyCompleted]
+                properties:
+                  onboardingCompleted:
+                    type: boolean
+                  alreadyCompleted:
+                    type: boolean
+                  xpAwarded:
+                    type: integer
+                  coinsAwarded:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Modulo 4 — Valley Progress ────────────────────────────────────────────
+  /player/valley-progress:
+    get:
+      tags: [player-profile]
+      summary: Progressione per valle (Fog of War)
+      description: |
+        Restituisce la percentuale di quest completate dal player per ciascuna
+        delle 10 valli del Trentino. Usato per il layer "Fog of War" sulla mappa.
+      responses:
+        '200':
+          description: Progressione per valle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValleyProgressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Modulo 5 — Daily Quests ───────────────────────────────────────────────
+  /player/daily-quests:
+    get:
+      tags: [daily-quests]
+      summary: Missioni giornaliere del player
+      description: |
+        Restituisce le 3 missioni del giorno per il contesto specificato.
+        Se non ancora generate per oggi, vengono create al momento (lazy).
+      parameters:
+        - name: context
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [in_trentino, out_of_region]
+          description: Contesto geografico del giocatore
+      responses:
+        '200':
+          description: Missioni del giorno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyQuestsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/daily-quests/{type}/complete:
+    post:
+      tags: [daily-quests]
+      summary: Completa una missione giornaliera
+      description: |
+        Segna la missione come completata e assegna XP e monete.
+        Idempotente: se gia completata risponde 200 senza riassegnare premi.
+        Restituisce 404 se il tipo non fa parte delle missioni del giorno.
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/DailyQuestType'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Missione completata (o gia completata)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompleteDailyQuestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Tipo non presente nelle missioni odierne
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Modulo 6 — Lore Quiz ──────────────────────────────────────────────────
+  /lore/daily-question:
+    get:
+      tags: [lore]
+      summary: Domanda della lore del giorno
+      description: |
+        Restituisce la domanda del giorno (deterministica: tutti i player
+        vedono la stessa domanda nello stesso giorno). Non include il campo
+        correctOptionIndex nella risposta. Se il player ha gia risposto,
+        include alreadyAnswered: true e il risultato.
+      responses:
+        '200':
+          description: Domanda del giorno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoreQuestionView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Nessuna domanda disponibile nel sistema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /lore/answer:
+    post:
+      tags: [lore]
+      summary: Rispondi alla domanda della lore
+      description: |
+        Invia la risposta alla domanda del giorno. Un solo tentativo al giorno.
+        Risposta corretta: assegna 50 monete e genera un Map Fragment.
+        Risposta errata: nessun premio.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [optionIndex]
+              properties:
+                optionIndex:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+      responses:
+        '200':
+          description: Risposta registrata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoreAnswerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Risposta gia inviata oggi (ALREADY_ANSWERED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Modulo 7 — Leghe ─────────────────────────────────────────────────────
+  /leagues/current:
+    get:
+      tags: [leagues]
+      summary: Lega corrente del player
+      description: |
+        Restituisce la stagione corrente, il tier, il girone e la classifica
+        completa dei 30 giocatori del girone ordinata per weeklyXp.
+      responses:
+        '200':
+          description: Lega corrente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueCurrentView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Nessuna stagione attiva o membership non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leagues/history:
+    get:
+      tags: [leagues]
+      summary: Storico stagioni del player
+      description: Ultime 10 stagioni del player con tier, rank finale, promoted/relegated.
+      responses:
+        '200':
+          description: Storico stagioni
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeagueHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Modulo 8 — Kudos ─────────────────────────────────────────────────────
+  /social/kudos:
+    post:
+      tags: [social]
+      summary: Invia un kudos a un altro player
+      description: |
+        Invia un kudos su un'attivita specifica (completamento o sblocco
+        collezionabile). Un solo kudos per attivita per player.
+        Manda notifica push al destinatario.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KudosRequest'
+      responses:
+        '201':
+          description: Kudos inviato
+        '400':
+          description: |
+            Input non valido o auto-kudos (SELF_KUDOS)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Kudos gia inviato per questa attivita (KUDOS_ALREADY_SENT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Modulo 9 — Social Feed ────────────────────────────────────────────────
+  /social/feed:
+    get:
+      tags: [social]
+      summary: Feed delle attivita degli amici
+      description: |
+        Restituisce gli ultimi completamenti e sblocchi collezionabili degli
+        amici (status accepted). Paginato. Per ogni item include kudosCount
+        e se il player autenticato ha gia inviato kudos.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Feed attivita
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeedActivityItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/leaderboard:
+    get:
+      tags: [social]
+      summary: Classifica tra amici
+      description: |
+        Restituisce la classifica del player corrente e dei suoi amici (accepted).
+        socialScore = completamenti_primary × 2 + completamenti_secondary × 1.
+        Ordinata per socialScore decrescente.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Classifica sociale
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SocialLeaderboardEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends:
+    get:
+      tags: [social]
+      summary: Lista amici
+      description: Amicizie in stato accepted del player autenticato.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista amici
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [friendshipId, playerId, username]
+                  properties:
+                    friendshipId: { type: string }
+                    playerId: { type: string }
+                    username: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/request:
+    post:
+      tags: [social]
+      summary: Invia richiesta di amicizia
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Indicare recipientId (contratto preferito) oppure username.
+              properties:
+                recipientId:
+                  type: string
+                  pattern: '^[a-f0-9]{24}$'
+                  description: Id del giocatore a cui inviare la richiesta
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  description: Username del giocatore a cui inviare la richiesta
+      responses:
+        '201':
+          description: Richiesta inviata
+        '400':
+          description: Auto-amicizia o errore validazione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Giocatore con username non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Amicizia già esistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/requests:
+    get:
+      tags: [social]
+      summary: Richieste di amicizia ricevute
+      description: Richieste pending ricevute dal player autenticato.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Richieste pending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [friendshipId, requesterId, username, createdAt]
+                  properties:
+                    friendshipId: { type: string }
+                    requesterId: { type: string }
+                    username: { type: string }
+                    createdAt: { type: string, format: date-time }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/{id}/accept:
+    post:
+      tags: [social]
+      summary: Accetta richiesta di amicizia
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: ID del documento Friendship
+      responses:
+        '200':
+          description: Amicizia accettata
+        '403':
+          description: Non sei il destinatario della richiesta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Richiesta non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/{id}/reject:
+    post:
+      tags: [social]
+      summary: Rifiuta richiesta di amicizia
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: ID del documento Friendship
+      responses:
+        '200':
+          description: Richiesta rifiutata
+        '403':
+          description: Non sei il destinatario della richiesta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Richiesta non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/friends/{id}:
+    delete:
+      tags: [social]
+      summary: Rimuovi amico
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: ID del documento Friendship
+      responses:
+        '200':
+          description: Amico rimosso
+        '404':
+          description: Amicizia non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Modulo 10 — Coop ─────────────────────────────────────────────────────
+  /coop/challenges:
+    post:
+      tags: [coop]
+      summary: Crea una sfida cooperativa
+      description: |
+        Crea una nuova sfida cooperativa tra il player autenticato e un amico.
+        Il partner deve essere in friendships con status accepted.
+        Manda notifica push al partner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCoopChallengeRequest'
+      responses:
+        '201':
+          description: Sfida creata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoopChallengeView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Il partner non e amico del player (NOT_FRIENDS)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [coop]
+      summary: Lista sfide attive del player
+      description: Restituisce le sfide attive in cui il player e initiator o partner.
+      responses:
+        '200':
+          description: Lista sfide attive
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CoopChallengeView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /coop/challenges/{id}:
+    get:
+      tags: [coop]
+      summary: Dettaglio sfida cooperativa
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dettaglio sfida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoopChallengeView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Il player non e partecipante della sfida (NOT_PARTICIPANT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /coop/challenges/{id}/progress:
+    post:
+      tags: [coop]
+      summary: Aggiunge progresso alla sfida
+      description: |
+        Incrementa il contributo del player chiamante (initiator o partner).
+        Se totalProgress >= targetValue, la sfida viene segnata come completata
+        e il collezionabile esclusivo viene assegnato a entrambi.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddProgressRequest'
+      responses:
+        '200':
+          description: Progresso aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoopChallengeView'
+        '400':
+          description: Sfida non attiva (CHALLENGE_NOT_ACTIVE) o input non valido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Il player non e partecipante (NOT_PARTICIPANT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /coop/nudge/{partnerId}:
+    post:
+      tags: [coop]
+      summary: Manda un nudge al partner
+      description: |
+        Invia una notifica push di stimolo al partner. Rate limit: un nudge
+        ogni 24 ore verso lo stesso partner. Richiede amicizia accepted.
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '204':
+          description: Nudge inviato
+        '400':
+          description: Rate limit (NUDGE_RATE_LIMITED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non sono amici (NOT_FRIENDS)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Modulo 11 — Mercato Coupon ────────────────────────────────────────────
+  /market/offers:
+    get:
+      tags: [market]
+      summary: Lista offerte disponibili nel mercato coupon
+      description: |
+        Lista offerte attive delle attivita approvate, arricchite con i dati
+        aziendali e il campo remaining (null = illimitato).
+      responses:
+        '200':
+          description: Lista offerte con campo remaining
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OfferWithRemaining'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /market/purchase/{offerId}:
+    post:
+      tags: [market]
+      summary: Acquista un coupon
+      description: |
+        Scala le monete del player e crea un coupon con token UUID e scadenza
+        48 ore. Operazione atomica: se il player non ha abbastanza monete
+        o l'offerta e esaurita, nessuna modifica avviene.
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Coupon creato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponView'
+        '400':
+          description: Monete insufficienti (INSUFFICIENT_COINS) o input non valido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Offerta non trovata (OFFER_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Offerta esaurita (OFFER_SOLD_OUT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /market/my-coupons:
+    get:
+      tags: [market]
+      summary: Coupon del player
+      description: |
+        Lista dei coupon del player (attivi, scaduti, usati). I coupon con
+        expiresAt < now vengono automaticamente marcati expired.
+      responses:
+        '200':
+          description: Lista coupon
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CouponView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /market/redeem/{token}:
+    get:
+      tags: [market]
+      summary: Anteprima coupon (endpoint pubblico esercente, sola lettura)
+      description: |
+        Restituisce le info del coupon senza richiedere autenticazione JWT.
+        Usato dall'esercente per verificare il coupon prima del riscatto.
+        Sicurezza tramite opacita del token (UUID v4, 122 bit di entropia).
+        Di sola lettura: il riscatto effettivo passa esclusivamente da
+        POST /market/business/redeem/{token} (cassiere autenticato), che
+        verifica la proprieta dell'offerta.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Info coupon
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponRedeemInfo'
+        '404':
+          description: Token non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /market/business/redeem/{token}:
+    get:
+      tags: [market]
+      summary: Verifica coupon scansionato (lato cassiere autenticato)
+      description: |
+        L'attivita autenticata (ruolo business) scansiona il QR del coupon e
+        ne verifica la validita senza riscattarlo. Restituisce 403
+        (COUPON_NOT_OWNED) se il coupon appartiene a un'offerta di un'altra
+        attivita. I coupon scaduti ancora marcati active vengono riallineati
+        a expired nella risposta.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Info coupon
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponRedeemInfo'
+        '403':
+          description: Il coupon non appartiene a un'offerta dell'attivita (COUPON_NOT_OWNED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags: [market]
+      summary: Riscatta coupon scansionato (lato cassiere autenticato)
+      description: |
+        L'attivita autenticata segna il coupon come redeemed previa verifica
+        che appartenga a una propria offerta. Un tentativo su coupon altrui
+        risponde 403 (COUPON_NOT_OWNED) senza consumare il coupon.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Coupon riscattato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponView'
+        '403':
+          description: Il coupon non appartiene a un'offerta dell'attivita (COUPON_NOT_OWNED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            Coupon gia usato (COUPON_ALREADY_REDEEMED) o scaduto (COUPON_EXPIRED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

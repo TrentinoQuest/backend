@@ -5,7 +5,13 @@ import {
   logoutHandler,
   refreshHandler,
   passwordRecoveryHandler,
+  passwordResetHandler,
+  deviceTokenHandler,
 } from '../controllers/auth.controller';
+import { googleOAuthHandler, appleOAuthHandler } from '../controllers/oauth.controller';
+import { authenticate, requireRole } from '../../../middleware/auth.middleware';
+import { authRateLimiter } from '../../../middleware/rate-limit';
+import { UserRole } from '../../../database/models/User.model';
 
 /**
  * Crea il router con gli endpoint del modulo auth.
@@ -27,11 +33,15 @@ import {
 export function createAuthRouter(): Router {
   const router = Router();
 
-  router.post('/register', registerHandler);
-  router.post('/login', loginHandler);
+  router.post('/register', authRateLimiter, registerHandler);
+  router.post('/login', authRateLimiter, loginHandler);
   router.post('/refresh', refreshHandler);
   router.post('/logout', logoutHandler);
-  router.post('/password-recovery', passwordRecoveryHandler);
+  router.post('/password-recovery', authRateLimiter, passwordRecoveryHandler);
+  router.post('/password-reset', authRateLimiter, passwordResetHandler);
+  router.post('/device-token', authenticate, requireRole(UserRole.PLAYER), deviceTokenHandler);
+  router.post('/oauth/google', authRateLimiter, googleOAuthHandler);
+  router.post('/oauth/apple', authRateLimiter, appleOAuthHandler);
 
   return router;
 }

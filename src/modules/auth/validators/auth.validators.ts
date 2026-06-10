@@ -39,6 +39,9 @@ export const registerPlayerSchema = z
  */
 export type RegisterPlayerInput = z.infer<typeof registerPlayerSchema>;
 
+export const deviceTokenSchema = z.object({ fcmToken: z.string().min(1) }).strict();
+export type DeviceTokenInput = z.infer<typeof deviceTokenSchema>;
+
 /**
  * Validator zod per la richiesta di login.
  *
@@ -74,6 +77,25 @@ export const passwordRecoverySchema = z
  * Tipo TypeScript inferito dallo schema di password recovery.
  */
 export type PasswordRecoveryInput = z.infer<typeof passwordRecoverySchema>;
+
+/**
+ * Validator zod per la richiesta di reset password.
+ *
+ * Il token e' la stringa ricevuta via link di recovery; la nuova password
+ * segue le stesse regole della registrazione.
+ */
+export const passwordResetSchema = z
+  .object({
+    token: z.string().min(1, 'Token obbligatorio'),
+    newPassword: z
+      .string()
+      .min(8, 'La password deve contenere almeno 8 caratteri')
+      .regex(/[A-Za-z]/, 'La password deve contenere almeno una lettera')
+      .regex(/[0-9]/, 'La password deve contenere almeno un numero'),
+  })
+  .strict();
+
+export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 
 /**
  * Validator zod per la richiesta di refresh dei token.

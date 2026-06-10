@@ -14,6 +14,7 @@ import {
 } from '../validators/collectible.validators';
 import { ICollectible } from '../../../database/models/Collectible.model';
 import { NotFoundError } from '../../../utils/errors';
+import { toGeoPointTolerant } from '../utils/geo.utils';
 
 /**
  * Serializza un collezionabile per la response HTTP.
@@ -27,6 +28,8 @@ function serializeCollectible(collectible: ICollectible): Collectible {
     rarity: collectible.rarity,
     status: collectible.status,
     createdAt: collectible.createdAt.toISOString(),
+    lore: collectible.lore ?? null,
+    coordinates: toGeoPointTolerant(collectible.coordinates),
   };
 }
 

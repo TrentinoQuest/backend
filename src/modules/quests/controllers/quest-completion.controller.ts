@@ -16,6 +16,7 @@ import {
 } from '../../../database/models/Quest.model';
 import { ICompletion } from '../../../database/models/Completion.model';
 import { ICollectible } from '../../../database/models/Collectible.model';
+import { toGeoPointTolerant } from '../utils/geo.utils';
 
 /**
  * Serializza una quest per la response HTTP.
@@ -90,6 +91,8 @@ function serializeCollectible(collectible: ICollectible): ScanQrResponse['collec
     rarity: collectible.rarity,
     createdAt: collectible.createdAt.toISOString(),
     status: collectible.status,
+    lore: collectible.lore ?? null,
+    coordinates: toGeoPointTolerant(collectible.coordinates),
   };
 }
 
@@ -170,6 +173,7 @@ export async function checkInHandler(
       pointsAwarded: result.pointsAwarded,
       totalPoints: result.totalPoints,
       distanceFromTargetMeters: result.distanceFromTargetMeters,
+      gamification: result.gamification,
     };
     res.status(201).json(response);
   } catch (err) {
@@ -207,6 +211,7 @@ export async function scanQrHandler(
       totalPoints: result.totalPoints,
       collectible: serializeCollectible(result.collectible),
       distanceFromTargetMeters: result.distanceFromTargetMeters,
+      gamification: result.gamification,
     };
     res.status(201).json(response);
   } catch (err) {

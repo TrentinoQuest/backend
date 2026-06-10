@@ -10,6 +10,7 @@ import {
 } from '../repositories/completion.repository';
 import { countActiveQuests, findQuestById, isPrimaryQuest } from '../repositories/quest.repository';
 import { findCollectiblesByIds } from '../repositories/collectible.repository';
+import { CoopChallenge } from '../../../database/models/CoopChallenge.model';
 
 /**
  * Service del modulo quests, parte relativa alle operazioni sul profilo
@@ -89,10 +90,6 @@ export async function getPlayerCollection(player: IUser): Promise<CollectibleEnt
   const playerId = player._id;
   const questIds = await listCompletedQuestIdsByPlayer(playerId);
 
-  if (questIds.length === 0) {
-    return [];
-  }
-
   const collectibleIdsWithUnlockDate: { collectibleId: Types.ObjectId; unlockedAt: Date }[] = [];
   for (const questId of questIds) {
     const quest = await findQuestById(String(questId));
@@ -107,6 +104,27 @@ export async function getPlayerCollection(player: IUser): Promise<CollectibleEnt
       collectibleId: primaryQuest.collectibleId,
       unlockedAt: quest.updatedAt,
     });
+  }
+
+  // Premi delle sfide cooperative completate: senza questa parte il
+  // collezionabile "sbloccato" annunciato dalla notifica non comparirebbe
+  // mai nell'album.
+  const coopRewards = await CoopChallenge.find({
+    status: 'completed',
+    rewardCollectibleId: { $ne: null },
+    $or: [{ initiatorId: playerId }, { partnerId: playerId }],
+  }).select('rewardCollectibleId completedAt startedAt');
+  for (const challenge of coopRewards) {
+    if (challenge.rewardCollectibleId) {
+      collectibleIdsWithUnlockDate.push({
+        collectibleId: challenge.rewardCollectibleId,
+        unlockedAt: challenge.completedAt ?? challenge.startedAt,
+      });
+    }
+  }
+
+  if (collectibleIdsWithUnlockDate.length === 0) {
+    return [];
   }
 
   const collectibles = await findCollectiblesByIds(

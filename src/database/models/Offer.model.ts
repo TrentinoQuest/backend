@@ -21,6 +21,7 @@ export interface IOffer extends Document {
   description: string;
   pointsCost: number;
   status: OfferStatus;
+  remaining: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +57,7 @@ const offerSchema = new Schema<IOffer>(
       enum: Object.values(OfferStatus),
       default: OfferStatus.ACTIVE,
     },
+    remaining: { type: Number, default: null, min: 0 },
   },
   {
     timestamps: true,

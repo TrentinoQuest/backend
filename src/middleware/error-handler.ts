@@ -1,8 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import { z, ZodError } from 'zod';
+import mongoose from 'mongoose';
 import { AppError } from '../utils/errors';
 import { logger } from '../config/logger';
 import { error as openApiError } from 'express-openapi-validator';
+
+/**
+ * Type guard per gli errori duplicate key di MongoDB (codice 11000),
+ * sollevati quando un insert/update viola un indice unique.
+ */
+function isDuplicateKeyError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 11000
+  );
+}
 
 /**
  * Middleware Express di error handling globale.
@@ -46,6 +60,28 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
       code: err.code,
       message: err.message,
       details: err.details,
+    });
+    return;
+  }
+
+  // ObjectId (o altro cast) malformato in una query Mongoose: input del
+  // client non valido, non un errore interno.
+  if (err instanceof mongoose.Error.CastError) {
+    logger.warn({ err, path: req.path }, 'Mongoose cast error');
+    res.status(400).json({
+      code: 'INVALID_ID',
+      message: 'Identificativo non valido',
+    });
+    return;
+  }
+
+  // Violazione di un indice unique non intercettata a livello di service
+  // (tipicamente race condition tra check applicativo e insert).
+  if (isDuplicateKeyError(err)) {
+    logger.warn({ err, path: req.path }, 'Duplicate key error');
+    res.status(409).json({
+      code: 'DUPLICATE_KEY',
+      message: 'Risorsa già esistente',
     });
     return;
   }

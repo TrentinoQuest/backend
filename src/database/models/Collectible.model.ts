@@ -37,6 +37,8 @@ export interface ICollectible extends Document {
   createdAt: Date;
   updatedAt: Date;
   status: CollectibleStatus;
+  lore: string | null;
+  coordinates: { type: 'Point'; coordinates: [number, number] } | null;
 }
 
 const collectibleSchema = new Schema<ICollectible>(
@@ -70,6 +72,8 @@ const collectibleSchema = new Schema<ICollectible>(
       enum: Object.values(CollectibleStatus),
       default: CollectibleStatus.ACTIVE,
     },
+    lore: { type: String, default: null },
+    coordinates: { type: Schema.Types.Mixed, default: null },
   },
   {
     timestamps: true,

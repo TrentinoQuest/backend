@@ -27,6 +27,8 @@ import {
   CreateSecondaryQuestInput,
   UpdateQuestInput as UpdateQuestValidatorInput,
 } from '../validators/quest-admin.validators';
+import { generateQrToken } from '../repositories/operator.repository';
+import { setQuestQrToken } from '../repositories/operator.repository';
 
 /**
  * Service del modulo quests, parte relativa alle operazioni admin.
@@ -258,4 +260,32 @@ export async function archiveQuest(id: string): Promise<void> {
   if (!updated) {
     throw new NotFoundError('Quest non trovata', 'QUEST_NOT_FOUND');
   }
+}
+
+/**
+ * Genera il qrToken per una quest principale (azione admin "Genera QR").
+ *
+ * Il token viene generato in anticipo, stampato come QR e consegnato
+ * all'operatore che lo affiggera' sul territorio. Blocca la
+ * rigenerazione se un token esiste gia': rigenerarlo invaliderebbe i QR
+ * eventualmente gia' stampati.
+ */
+export async function generateQuestQr(id: string): Promise<IQuest> {
+  const quest = await findQuestById(id);
+  if (!quest) {
+    throw new NotFoundError('Quest non trovata', 'QUEST_NOT_FOUND');
+  }
+  if (!isPrimaryQuest(quest)) {
+    throw new BadRequestError('Solo le quest principali hanno un QR code', 'NOT_A_PRIMARY_QUEST');
+  }
+  if (quest.qrToken) {
+    throw new ConflictError('QR gia generato per questa quest', 'QUEST_QR_ALREADY_GENERATED');
+  }
+
+  const token = generateQrToken();
+  const updated = await setQuestQrToken(id, token);
+  if (!updated) {
+    throw new NotFoundError('Quest non trovata', 'QUEST_NOT_FOUND');
+  }
+  return updated;
 }

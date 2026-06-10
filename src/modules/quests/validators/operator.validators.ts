@@ -42,6 +42,7 @@ export type ObjectIdParam = z.infer<typeof objectIdParamSchema>;
 export const placeQuestSchema = z
   .object({
     exactPosition: geoPointSchema,
+    scannedToken: z.string().min(1, 'Token scansionato obbligatorio'),
     fix: geoFixSchema.optional(),
   })
   .strict();

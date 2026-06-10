@@ -4,8 +4,10 @@ import {
   registerPlayerSchema,
   loginSchema,
   passwordRecoverySchema,
+  passwordResetSchema,
   refreshTokenSchema,
   logoutSchema,
+  deviceTokenSchema,
 } from '../validators/auth.validators';
 import {
   registerPlayer,
@@ -13,25 +15,39 @@ import {
   logout,
   refreshTokens,
   requestPasswordRecovery,
+  resetPassword,
   AuthResult,
   TokenPair,
 } from '../services/auth.service';
-import { IUser } from '../../../database/models/User.model';
+import { Player, IUser, IPlayer, UserRole } from '../../../database/models/User.model';
+import { UnauthorizedError } from '../../../utils/errors';
+import { computeLevelFromXp, computeXpToNextLevel } from '../../../config/gamification';
+import { awardXpAndCoins } from '../../quests/services/gamification.service';
 
 /**
  * Serializza un utente per la response HTTP.
  *
  * Esclude la password e altri campi che non devono mai essere esposti
- * tramite API. Mantiene tutti i campi specifici del ruolo grazie al
- * discriminator pattern di Mongoose.
+ * tramite API. Per i giocatori aggiunge i campi calcolati levelTitle
+ * e xpToNextLevel che non sono persistiti nel DB.
  */
 function serializeUser(user: IUser): Record<string, unknown> {
   const obj = user.toObject({ versionKey: false });
   delete (obj as Record<string, unknown>).password;
-  return {
+  // Campi interni al backend: mai esposti via API (vedi CLAUDE.md).
+  delete (obj as Record<string, unknown>).fcmToken;
+  delete (obj as Record<string, unknown>).oauthId;
+  const result: Record<string, unknown> = {
     ...obj,
     id: String(user._id),
   };
+  if (user.role === UserRole.PLAYER) {
+    const player = user as IPlayer;
+    const { title: levelTitle } = computeLevelFromXp(player.xp ?? 0);
+    result.levelTitle = levelTitle;
+    result.xpToNextLevel = computeXpToNextLevel(player.xp ?? 0);
+  }
+  return result;
 }
 
 /**
@@ -169,6 +185,70 @@ export async function passwordRecoveryHandler(
     const input = passwordRecoverySchema.parse(req.body);
     await requestPasswordRecovery(input);
     res.status(202).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Handler per POST /auth/password-reset.
+ *
+ * Completa il reset password con il token ricevuto via link di recovery.
+ * Risponde 204 in caso di successo; 401 se il token non e' valido.
+ */
+export async function passwordResetHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const input = passwordResetSchema.parse(req.body);
+    await resetPassword(input.token, input.newPassword);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deviceTokenHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const { fcmToken } = deviceTokenSchema.parse(req.body);
+    await Player.findByIdAndUpdate(req.user._id, { fcmToken });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function completeOnboardingHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const player = await Player.findById(req.user._id);
+    if (!player) throw new UnauthorizedError('Giocatore non trovato', 'PLAYER_NOT_FOUND');
+    if (player.onboardingCompleted) {
+      res.status(200).json({ message: 'Onboarding già completato' });
+      return;
+    }
+    player.onboardingCompleted = true;
+    await player.save();
+    // awardXpAndCoins ricalcola anche il livello e aggiorna il weeklyXp
+    // della lega, mantenendo level coerente con gli XP.
+    const award = await awardXpAndCoins(String(player._id), 100, 50);
+    res.status(200).json({
+      xpAwarded: 100,
+      coinsAwarded: 50,
+      totalXp: award.totalXp,
+      totalPoints: award.totalPoints,
+    });
   } catch (err) {
     next(err);
   }

@@ -9,9 +9,7 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: {
-          allowDefaultProject: ['*.mjs'],
-        },
+        project: ['./tsconfig.json', './tsconfig.test.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -33,6 +31,16 @@ export default tseslint.config(
           },
         },
       ],
+    },
+  },
+  {
+    // Nei test di integrazione, res.body di supertest è tipizzato `any` — non è evitabile
+    // senza definire tipi di risposta completi per ogni assertion, il che sarebbe over-engineering.
+    files: ['tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
 );

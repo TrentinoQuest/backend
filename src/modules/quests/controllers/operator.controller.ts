@@ -46,6 +46,7 @@ function serializeOperatorQuest(quest: IPrimaryQuest): OperatorQuestView {
           lng: quest.exactPosition.coordinates[0],
         }
       : null,
+    qrToken: quest.qrToken ?? null,
   } as OperatorQuestView;
 }
 
@@ -103,7 +104,7 @@ export async function placeQuestHandler(
   try {
     const params = objectIdParamSchema.parse(req.params);
     const body = placeQuestSchema.parse(req.body);
-    const quest = await placeQuest(params.id, body.exactPosition, body.fix);
+    const quest = await placeQuest(params.id, body.exactPosition, body.scannedToken, body.fix);
     res.status(200).json(serializeOperatorQuest(quest));
   } catch (err) {
     next(err);
