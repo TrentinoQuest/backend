@@ -8,6 +8,8 @@ import {
   getMyCouponsHandler,
   getRedeemInfoHandler,
   redeemCouponHandler,
+  getCouponInfoForBusinessHandler,
+  redeemCouponForBusinessHandler,
 } from '../controllers/market.controller';
 
 export function createMarketRouter(): Router {
@@ -27,6 +29,22 @@ export function createMarketRouter(): Router {
   // per impedire il brute force sui token)
   router.get('/market/redeem/:token', redeemRateLimiter, getRedeemInfoHandler);
   router.post('/market/redeem/:token', redeemRateLimiter, redeemCouponHandler);
+
+  // Lato cassiere: l'attivita autenticata scansiona il QR del coupon, ne
+  // verifica la validita e lo riscatta, solo se appartiene a una propria
+  // offerta (vincolo di proprieta lato service).
+  router.get(
+    '/market/business/redeem/:token',
+    authenticate,
+    requireRole(UserRole.BUSINESS),
+    getCouponInfoForBusinessHandler,
+  );
+  router.post(
+    '/market/business/redeem/:token',
+    authenticate,
+    requireRole(UserRole.BUSINESS),
+    redeemCouponForBusinessHandler,
+  );
 
   return router;
 }

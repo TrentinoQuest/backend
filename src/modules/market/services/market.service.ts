@@ -4,7 +4,12 @@ import { Coupon, ICoupon } from '../../../database/models/Coupon.model';
 import { Offer, OfferStatus } from '../../../database/models/Offer.model';
 import { Player, Business } from '../../../database/models/User.model';
 import { listOffersForPlayers } from '../../business/services/business.service';
-import { NotFoundError, ConflictError, BadRequestError } from '../../../utils/errors';
+import {
+  NotFoundError,
+  ConflictError,
+  BadRequestError,
+  ForbiddenError,
+} from '../../../utils/errors';
 import { CouponView } from '@trentino-quest/shared-types';
 
 const COUPON_TTL_MS = 48 * 60 * 60 * 1000;
@@ -177,12 +182,16 @@ export async function getRedeemInfo(token: string): Promise<{
   };
 }
 
-export async function redeemCoupon(token: string): Promise<CouponView> {
+/**
+ * Transizione atomica active → redeemed di un coupon dato il token.
+ *
+ * Il filtro su status e scadenza garantisce che due riscatti concorrenti
+ * dello stesso token non possano entrambi riuscire (il vecchio findOne +
+ * save aveva questa race). In caso di fallimento distingue il motivo
+ * (inesistente, gia' riscattato, scaduto) per dare il codice corretto.
+ */
+async function atomicRedeemByToken(token: string): Promise<ICoupon> {
   const now = new Date();
-
-  // Transizione atomica active → redeemed: il filtro su status e scadenza
-  // garantisce che due riscatti concorrenti dello stesso token non possano
-  // entrambi riuscire (il vecchio findOne + save aveva questa race).
   const coupon = await Coupon.findOneAndUpdate(
     { token, status: 'active', expiresAt: { $gte: now } },
     { status: 'redeemed', redeemedAt: now },
@@ -190,7 +199,6 @@ export async function redeemCoupon(token: string): Promise<CouponView> {
   ).populate('offerId', 'title businessId');
 
   if (!coupon) {
-    // Distingue il motivo del fallimento per dare il codice corretto
     const existing = await Coupon.findOne({ token });
     if (!existing) throw new NotFoundError('Coupon non trovato', 'COUPON_NOT_FOUND');
     if (existing.status === 'redeemed') {
@@ -198,7 +206,91 @@ export async function redeemCoupon(token: string): Promise<CouponView> {
     }
     throw new ConflictError('Coupon scaduto', 'COUPON_EXPIRED');
   }
+  return coupon;
+}
 
+export async function redeemCoupon(token: string): Promise<CouponView> {
+  const coupon = await atomicRedeemByToken(token);
+  const offer = coupon.offerId as unknown as {
+    title?: string;
+    businessId?: Types.ObjectId;
+  } | null;
+  const businessName = await findBusinessName(offer?.businessId);
+  return serializeCoupon(coupon, offer?.title ?? '', businessName);
+}
+
+/* ------------------------------ Lato cassiere --------------------------- */
+
+/**
+ * Carica un coupon per token verificando che appartenga a un'offerta
+ * dell'attivita' indicata.
+ *
+ * E' il vincolo di sicurezza del flusso "cassiere": un'attivita' puo'
+ * ispezionare o riscattare solo i coupon delle proprie offerte, mai quelli
+ * di offerte altrui (403 COUPON_NOT_OWNED).
+ */
+async function loadOwnedCoupon(
+  businessId: string,
+  token: string,
+): Promise<{ coupon: ICoupon; offerTitle: string; businessName: string }> {
+  const coupon = await Coupon.findOne({ token }).populate('offerId', 'title businessId');
+  if (!coupon) throw new NotFoundError('Coupon non trovato', 'COUPON_NOT_FOUND');
+
+  const offer = coupon.offerId as unknown as {
+    title?: string;
+    businessId?: Types.ObjectId;
+  } | null;
+
+  if (!offer?.businessId || String(offer.businessId) !== businessId) {
+    throw new ForbiddenError(
+      "Il coupon non appartiene a un'offerta della tua attivita",
+      'COUPON_NOT_OWNED',
+    );
+  }
+
+  const businessName = await findBusinessName(offer.businessId);
+  return { coupon, offerTitle: offer.title ?? '', businessName };
+}
+
+/**
+ * Verifica un coupon scansionato dal cassiere senza riscattarlo (anteprima).
+ *
+ * Restituisce lo stato reale del coupon — riallineando ad "expired" quelli
+ * scaduti ma ancora marcati active — cosi' l'esercente vede subito se puo'
+ * accettarlo prima di confermare il riscatto.
+ */
+export async function getCouponInfoForBusiness(
+  businessId: string,
+  token: string,
+): Promise<{ coupon: CouponView; offerTitle: string; businessName: string }> {
+  const { coupon, offerTitle, businessName } = await loadOwnedCoupon(businessId, token);
+
+  if (coupon.status === 'active' && coupon.expiresAt.getTime() < Date.now()) {
+    await Coupon.updateOne({ _id: coupon._id, status: 'active' }, { status: 'expired' });
+    coupon.status = 'expired';
+  }
+
+  return {
+    coupon: serializeCoupon(coupon, offerTitle, businessName),
+    offerTitle,
+    businessName,
+  };
+}
+
+/**
+ * Riscatta un coupon scansionato dal cassiere (RF: utilizzo offerta).
+ *
+ * Verifica prima la proprieta' (403 se l'offerta non e' dell'attivita')
+ * cosi' un riscatto su coupon altrui non consuma il coupon, poi applica la
+ * transizione atomica active → redeemed.
+ */
+export async function redeemCouponForBusiness(
+  businessId: string,
+  token: string,
+): Promise<CouponView> {
+  await loadOwnedCoupon(businessId, token);
+
+  const coupon = await atomicRedeemByToken(token);
   const offer = coupon.offerId as unknown as {
     title?: string;
     businessId?: Types.ObjectId;

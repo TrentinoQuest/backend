@@ -5,6 +5,8 @@ import {
   getMyCoupons,
   getRedeemInfo,
   redeemCoupon,
+  getCouponInfoForBusiness,
+  redeemCouponForBusiness,
 } from '../services/market.service';
 import { UnauthorizedError } from '../../../utils/errors';
 
@@ -72,6 +74,38 @@ export async function redeemCouponHandler(
 ): Promise<void> {
   try {
     const coupon = await redeemCoupon(String(req.params.token));
+    res.status(200).json(coupon);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Lato cassiere — attivita autenticata: verifica un coupon scansionato
+// senza riscattarlo, solo se appartiene a una propria offerta.
+export async function getCouponInfoForBusinessHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const result = await getCouponInfoForBusiness(String(req.user._id), String(req.params.token));
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Lato cassiere — attivita autenticata: riscatta un coupon scansionato,
+// previa verifica che appartenga a una propria offerta.
+export async function redeemCouponForBusinessHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) throw new UnauthorizedError('Autenticazione richiesta', 'AUTH_REQUIRED');
+    const coupon = await redeemCouponForBusiness(String(req.user._id), String(req.params.token));
     res.status(200).json(coupon);
   } catch (err) {
     next(err);

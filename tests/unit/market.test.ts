@@ -5,6 +5,8 @@ import {
   getMyCoupons,
   redeemCoupon,
   getRedeemInfo,
+  getCouponInfoForBusiness,
+  redeemCouponForBusiness,
 } from '../../src/modules/market/services/market.service';
 import { Offer, OfferStatus } from '../../src/database/models/Offer.model';
 import { Coupon } from '../../src/database/models/Coupon.model';
@@ -286,5 +288,105 @@ describe('redeemCoupon — atomicità e businessName', () => {
 
     expect(info.businessName).not.toBe('');
     expect(info.coupon.businessName).toBe(info.businessName);
+  });
+});
+
+// ── Lato cassiere: verifica e riscatto con vincolo di proprietà ───────────────
+
+describe('getCouponInfoForBusiness', () => {
+  it('lancia NotFoundError COUPON_NOT_FOUND per token inesistente', async () => {
+    const bizId = await createBusiness('ci0');
+    await expect(
+      getCouponInfoForBusiness(String(bizId), 'token-inesistente'),
+    ).rejects.toMatchObject({ code: 'COUPON_NOT_FOUND' });
+  });
+
+  it("lancia ForbiddenError COUPON_NOT_OWNED se il coupon è di un'altra attività", async () => {
+    const playerId = await createPlayer('ci1');
+    const ownerBiz = await createBusiness('ci1-owner');
+    const otherBiz = await createBusiness('ci1-other');
+    const offerId = await createOffer(ownerBiz, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    await expect(getCouponInfoForBusiness(String(otherBiz), coupon.token)).rejects.toMatchObject({
+      code: 'COUPON_NOT_OWNED',
+    });
+  });
+
+  it('restituisce le info del coupon attivo per la propria attività senza riscattarlo', async () => {
+    const playerId = await createPlayer('ci2');
+    const bizId = await createBusiness('ci2');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    const info = await getCouponInfoForBusiness(String(bizId), coupon.token);
+    expect(info.coupon.status).toBe('active');
+    expect(info.businessName).not.toBe('');
+
+    // Non deve aver consumato il coupon: resta riscattabile.
+    const stored = await Coupon.findOne({ token: coupon.token });
+    expect(stored?.status).toBe('active');
+  });
+
+  it('riallinea a expired un coupon scaduto ancora marcato active', async () => {
+    const playerId = await createPlayer('ci3');
+    const bizId = await createBusiness('ci3');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+    await Coupon.findOneAndUpdate(
+      { token: coupon.token },
+      { expiresAt: new Date(Date.now() - 1000) },
+    );
+
+    const info = await getCouponInfoForBusiness(String(bizId), coupon.token);
+    expect(info.coupon.status).toBe('expired');
+  });
+});
+
+describe('redeemCouponForBusiness', () => {
+  it('lancia ForbiddenError COUPON_NOT_OWNED senza consumare il coupon altrui', async () => {
+    const playerId = await createPlayer('rb1');
+    const ownerBiz = await createBusiness('rb1-owner');
+    const otherBiz = await createBusiness('rb1-other');
+    const offerId = await createOffer(ownerBiz, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    await expect(redeemCouponForBusiness(String(otherBiz), coupon.token)).rejects.toMatchObject({
+      code: 'COUPON_NOT_OWNED',
+    });
+
+    // Il coupon non deve essere stato riscattato dal tentativo non autorizzato.
+    const stored = await Coupon.findOne({ token: coupon.token });
+    expect(stored?.status).toBe('active');
+  });
+
+  it('riscatta un coupon della propria attività', async () => {
+    const playerId = await createPlayer('rb2');
+    const bizId = await createBusiness('rb2');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    const redeemed = await redeemCouponForBusiness(String(bizId), coupon.token);
+    expect(redeemed.status).toBe('redeemed');
+    expect(redeemed.redeemedAt).not.toBeNull();
+    expect(redeemed.businessName).not.toBe('');
+  });
+
+  it('lancia ConflictError COUPON_ALREADY_REDEEMED al secondo riscatto', async () => {
+    const playerId = await createPlayer('rb3');
+    const bizId = await createBusiness('rb3');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    await redeemCouponForBusiness(String(bizId), coupon.token);
+    await expect(redeemCouponForBusiness(String(bizId), coupon.token)).rejects.toMatchObject({
+      code: 'COUPON_ALREADY_REDEEMED',
+    });
   });
 });

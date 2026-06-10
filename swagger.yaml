@@ -4069,3 +4069,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /market/business/redeem/{token}:
+    get:
+      tags: [market]
+      summary: Verifica coupon scansionato (lato cassiere autenticato)
+      description: |
+        L'attivita autenticata (ruolo business) scansiona il QR del coupon e
+        ne verifica la validita senza riscattarlo. Restituisce 403
+        (COUPON_NOT_OWNED) se il coupon appartiene a un'offerta di un'altra
+        attivita. I coupon scaduti ancora marcati active vengono riallineati
+        a expired nella risposta.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Info coupon
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponRedeemInfo'
+        '403':
+          description: Il coupon non appartiene a un'offerta dell'attivita (COUPON_NOT_OWNED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags: [market]
+      summary: Riscatta coupon scansionato (lato cassiere autenticato)
+      description: |
+        L'attivita autenticata segna il coupon come redeemed previa verifica
+        che appartenga a una propria offerta. Un tentativo su coupon altrui
+        risponde 403 (COUPON_NOT_OWNED) senza consumare il coupon.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Coupon riscattato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponView'
+        '403':
+          description: Il coupon non appartiene a un'offerta dell'attivita (COUPON_NOT_OWNED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token non trovato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            Coupon gia usato (COUPON_ALREADY_REDEEMED) o scaduto (COUPON_EXPIRED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
