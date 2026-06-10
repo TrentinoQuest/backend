@@ -80,6 +80,39 @@ export function geoJsonToGeoPoint(geoJson: GeoJsonPoint): GeoPoint {
 }
 
 /**
+ * Converte in modo tollerante un valore di coordinate persistito nel campo
+ * Mixed di un documento (collezionabile) verso il formato GeoPoint dell'API.
+ *
+ * Il campo puo' contenere forme diverse a seconda di come e' stato scritto:
+ *  - GeoJSON `{ type: 'Point', coordinates: [lng, lat] }` (seed e write path corretto)
+ *  - legacy `{ lat, lng }` (documenti scritti da versioni precedenti del CRUD)
+ *  - null / valore malformato
+ *
+ * In tutti i casi NON lancia mai: un dato malformato viene degradato a null
+ * cosi' la serializzazione di una lista non fallisce a causa di un singolo
+ * documento sporco. Restituire null e' preferibile a un 500.
+ */
+export function toGeoPointTolerant(value: unknown): GeoPoint | null {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+
+  // Forma GeoJSON: array [lng, lat]
+  const coords = record.coordinates;
+  if (Array.isArray(coords) && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+    return { lng: coords[0], lat: coords[1] };
+  }
+
+  // Forma legacy { lat, lng }
+  if (typeof record.lat === 'number' && typeof record.lng === 'number') {
+    return { lat: record.lat, lng: record.lng };
+  }
+
+  return null;
+}
+
+/**
  * Metadati di qualita' di un fix GPS validati dalla funzione anti-cheat.
  *
  * Sottoinsieme di GeoFix di shared-types che esclude lat/lng: la

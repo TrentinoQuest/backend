@@ -61,15 +61,55 @@ export async function listAllCollectibles(): Promise<ICollectible[]> {
 }
 
 /**
- * Crea un nuovo collezionabile.
+ * Coordinate accettate in input dal CRUD nel formato dell'API REST {lat,lng}.
+ * `null` rimuove esplicitamente le coordinate, `undefined` (chiave assente)
+ * le lascia invariate in fase di update.
  */
-export async function createCollectible(data: {
+type CoordinatesInput = { lat: number; lng: number } | null | undefined;
+
+/**
+ * Converte le coordinate {lat,lng} dell'API nel formato GeoJSON persistito
+ * nel modello (coerente con il seed e con i serializer). Restituisce
+ * `undefined` quando la chiave non e' fornita, cosi' l'update parziale non
+ * tocca il campo; `null` per la rimozione esplicita.
+ */
+function coordinatesToGeoJson(
+  coordinates: CoordinatesInput,
+): ICollectible['coordinates'] | undefined {
+  if (coordinates === undefined) {
+    return undefined;
+  }
+  if (coordinates === null) {
+    return null;
+  }
+  return { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] };
+}
+
+/**
+ * Campi scrivibili di un collezionabile dal CRUD amministrativo.
+ */
+interface CollectibleWriteInput {
   name: string;
   description: string;
   imageUrl: string;
   rarity: ICollectible['rarity'];
-}): Promise<ICollectible> {
-  return Collectible.create(data);
+  lore?: string | null;
+  coordinates?: CoordinatesInput;
+}
+
+/**
+ * Crea un nuovo collezionabile.
+ *
+ * Le coordinate in input arrivano nel formato API {lat,lng} e vengono
+ * convertite in GeoJSON prima della persistenza, per restare coerenti con
+ * il formato atteso dai serializer e prodotto dal seed.
+ */
+export async function createCollectible(data: CollectibleWriteInput): Promise<ICollectible> {
+  const { coordinates, ...rest } = data;
+  return Collectible.create({
+    ...rest,
+    coordinates: coordinatesToGeoJson(coordinates) ?? null,
+  });
 }
 
 /**
@@ -78,17 +118,21 @@ export async function createCollectible(data: {
  */
 export async function updateCollectible(
   id: string,
-  data: Partial<{
-    name: string;
-    description: string;
-    imageUrl: string;
-    rarity: ICollectible['rarity'];
-  }>,
+  data: Partial<CollectibleWriteInput>,
 ): Promise<ICollectible | null> {
   if (!Types.ObjectId.isValid(id)) {
     return null;
   }
-  return Collectible.findByIdAndUpdate(id, data, { returnDocument: 'after', runValidators: true });
+  const { coordinates, ...rest } = data;
+  const update: Record<string, unknown> = { ...rest };
+  const geoCoordinates = coordinatesToGeoJson(coordinates);
+  if (geoCoordinates !== undefined) {
+    update.coordinates = geoCoordinates;
+  }
+  return Collectible.findByIdAndUpdate(id, update, {
+    returnDocument: 'after',
+    runValidators: true,
+  });
 }
 
 /**

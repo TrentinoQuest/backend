@@ -16,6 +16,7 @@ import {
 } from '../../../database/models/Quest.model';
 import { ICompletion } from '../../../database/models/Completion.model';
 import { ICollectible } from '../../../database/models/Collectible.model';
+import { toGeoPointTolerant } from '../utils/geo.utils';
 
 /**
  * Serializza una quest per la response HTTP.
@@ -91,9 +92,7 @@ function serializeCollectible(collectible: ICollectible): ScanQrResponse['collec
     createdAt: collectible.createdAt.toISOString(),
     status: collectible.status,
     lore: collectible.lore ?? null,
-    coordinates: collectible.coordinates
-      ? { lat: collectible.coordinates.coordinates[1], lng: collectible.coordinates.coordinates[0] }
-      : null,
+    coordinates: toGeoPointTolerant(collectible.coordinates),
   };
 }
 

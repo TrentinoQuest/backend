@@ -3,6 +3,7 @@ import {
   haversineDistanceMeters,
   geoPointToGeoJson,
   geoJsonToGeoPoint,
+  toGeoPointTolerant,
   validateGeoFix,
 } from '../../src/modules/quests/utils/geo.utils';
 import { computeProximityZone } from '../../src/modules/quests/controllers/quest-proximity.controller';
@@ -153,5 +154,30 @@ describe('validateGeoFix', () => {
     expect(() => validateGeoFix({ accuracy: 999, clientTimestamp: Date.now() - 999_000 })).toThrow(
       expect.objectContaining({ code: 'OUT_OF_RANGE_ACCURACY' }),
     );
+  });
+});
+
+describe('toGeoPointTolerant', () => {
+  it('converts GeoJSON Point [lng, lat] to {lat, lng}', () => {
+    const result = toGeoPointTolerant({ type: 'Point', coordinates: [11.1217, 46.0667] });
+    expect(result).toEqual({ lat: 46.0667, lng: 11.1217 });
+  });
+
+  it('accepts legacy {lat, lng} shape without throwing', () => {
+    const result = toGeoPointTolerant({ lat: 46.0667, lng: 11.1217 });
+    expect(result).toEqual({ lat: 46.0667, lng: 11.1217 });
+  });
+
+  it('returns null for null/undefined', () => {
+    expect(toGeoPointTolerant(null)).toBeNull();
+    expect(toGeoPointTolerant(undefined)).toBeNull();
+  });
+
+  it('returns null (no throw) for malformed coordinates', () => {
+    // Documento sporco: coordinates valorizzato ma senza array GeoJSON ne lat/lng
+    expect(toGeoPointTolerant({ foo: 'bar' })).toBeNull();
+    expect(toGeoPointTolerant({ coordinates: 'not-an-array' })).toBeNull();
+    expect(toGeoPointTolerant({ coordinates: [11.12] })).toBeNull();
+    expect(toGeoPointTolerant(42)).toBeNull();
   });
 });
