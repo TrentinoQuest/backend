@@ -3,7 +3,6 @@ import { registerPlayer } from '../../src/modules/auth/services/auth.service';
 import {
   purchaseOffer,
   getMyCoupons,
-  redeemCoupon,
   getRedeemInfo,
   getCouponInfoForBusiness,
   redeemCouponForBusiness,
@@ -147,59 +146,6 @@ describe('purchaseOffer', () => {
   });
 });
 
-// ── redeemCoupon ──────────────────────────────────────────────────────────────
-
-describe('redeemCoupon', () => {
-  it('lancia NotFoundError COUPON_NOT_FOUND per token inesistente', async () => {
-    await expect(redeemCoupon('token-inesistente')).rejects.toMatchObject({
-      code: 'COUPON_NOT_FOUND',
-    });
-  });
-
-  it('riscatta un coupon attivo e cambia status a redeemed', async () => {
-    const playerId = await createPlayer('i');
-    const bizId = await createBusiness('i');
-    const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
-    const couponView = await purchaseOffer(playerId, offerId);
-
-    const redeemed = await redeemCoupon(couponView.token);
-    expect(redeemed.status).toBe('redeemed');
-    expect(redeemed.redeemedAt).not.toBeNull();
-  });
-
-  it('lancia ConflictError COUPON_ALREADY_REDEEMED per coupon già riscattato', async () => {
-    const playerId = await createPlayer('j');
-    const bizId = await createBusiness('j');
-    const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
-    const couponView = await purchaseOffer(playerId, offerId);
-
-    await redeemCoupon(couponView.token);
-    await expect(redeemCoupon(couponView.token)).rejects.toMatchObject({
-      code: 'COUPON_ALREADY_REDEEMED',
-    });
-  });
-
-  it('lancia ConflictError COUPON_EXPIRED per coupon scaduto', async () => {
-    const playerId = await createPlayer('k');
-    const bizId = await createBusiness('k');
-    const offerId = await createOffer(bizId, 50);
-    await Player.findByIdAndUpdate(playerId, { totalPoints: 500 });
-    const couponView = await purchaseOffer(playerId, offerId);
-
-    // Simula scadenza
-    await Coupon.findOneAndUpdate(
-      { token: couponView.token },
-      { expiresAt: new Date(Date.now() - 1000) },
-    );
-
-    await expect(redeemCoupon(couponView.token)).rejects.toMatchObject({
-      code: 'COUPON_EXPIRED',
-    });
-  });
-});
-
 // ── getMyCoupons ──────────────────────────────────────────────────────────────
 
 describe('getMyCoupons', () => {
@@ -239,44 +185,9 @@ describe('getMyCoupons', () => {
   });
 });
 
-// ── Atomicità riscatto e dati esercente ──────────────────────────────────────
+// ── getRedeemInfo (anteprima pubblica esercente) ──────────────────────────────
 
-describe('redeemCoupon — atomicità e businessName', () => {
-  it('due riscatti concorrenti dello stesso token: uno solo riesce', async () => {
-    const playerId = await createPlayer('cc1');
-    const bizId = await createBusiness('cc1');
-    const offerId = await createOffer(bizId, 10);
-    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
-    const coupon = await purchaseOffer(playerId, offerId);
-
-    const results = await Promise.allSettled([
-      redeemCoupon(coupon.token),
-      redeemCoupon(coupon.token),
-    ]);
-
-    const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    const rejected = results.filter((r) => r.status === 'rejected');
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    expect(rejected[0].reason).toMatchObject({
-      code: 'COUPON_ALREADY_REDEEMED',
-    });
-  });
-
-  it('include il nome reale della attività nel coupon riscattato', async () => {
-    const playerId = await createPlayer('bn1');
-    const bizId = await createBusiness('bn1');
-    const business = await Business.findById(bizId);
-    const offerId = await createOffer(bizId, 10);
-    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
-    const coupon = await purchaseOffer(playerId, offerId);
-
-    const redeemed = await redeemCoupon(coupon.token);
-
-    expect(redeemed.businessName).toBe(business?.businessName);
-    expect(redeemed.businessName).not.toBe('');
-  });
-
+describe('getRedeemInfo', () => {
   it('getRedeemInfo espone il nome della attività per la pagina esercente', async () => {
     const playerId = await createPlayer('bn2');
     const bizId = await createBusiness('bn2');
@@ -386,6 +297,46 @@ describe('redeemCouponForBusiness', () => {
 
     await redeemCouponForBusiness(String(bizId), coupon.token);
     await expect(redeemCouponForBusiness(String(bizId), coupon.token)).rejects.toMatchObject({
+      code: 'COUPON_ALREADY_REDEEMED',
+    });
+  });
+
+  it('lancia ConflictError COUPON_EXPIRED per coupon scaduto', async () => {
+    const playerId = await createPlayer('rb4');
+    const bizId = await createBusiness('rb4');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+    await Coupon.findOneAndUpdate(
+      { token: coupon.token },
+      { expiresAt: new Date(Date.now() - 1000) },
+    );
+
+    await expect(redeemCouponForBusiness(String(bizId), coupon.token)).rejects.toMatchObject({
+      code: 'COUPON_EXPIRED',
+    });
+  });
+
+  // Atomicità: il riscatto è un update condizionato su status='active',
+  // quindi due scansioni quasi simultanee dello stesso coupon non possono
+  // entrambe andare a buon fine (no doppia attivazione).
+  it('due riscatti concorrenti dello stesso token: uno solo riesce', async () => {
+    const playerId = await createPlayer('rb5');
+    const bizId = await createBusiness('rb5');
+    const offerId = await createOffer(bizId, 10);
+    await Player.findByIdAndUpdate(playerId, { totalPoints: 100 });
+    const coupon = await purchaseOffer(playerId, offerId);
+
+    const results = await Promise.allSettled([
+      redeemCouponForBusiness(String(bizId), coupon.token),
+      redeemCouponForBusiness(String(bizId), coupon.token),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({
       code: 'COUPON_ALREADY_REDEEMED',
     });
   });

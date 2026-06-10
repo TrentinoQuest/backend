@@ -4,7 +4,6 @@ import {
   purchaseOffer,
   getMyCoupons,
   getRedeemInfo,
-  redeemCoupon,
   getCouponInfoForBusiness,
   redeemCouponForBusiness,
 } from '../services/market.service';
@@ -61,20 +60,6 @@ export async function getRedeemInfoHandler(
   try {
     const result = await getRedeemInfo(String(req.params.token));
     res.status(200).json(result);
-  } catch (err) {
-    next(err);
-  }
-}
-
-// Endpoint pubblico — nessuna autenticazione JWT
-export async function redeemCouponHandler(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const coupon = await redeemCoupon(String(req.params.token));
-    res.status(200).json(coupon);
   } catch (err) {
     next(err);
   }

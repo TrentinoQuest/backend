@@ -4007,11 +4007,14 @@ paths:
   /market/redeem/{token}:
     get:
       tags: [market]
-      summary: Verifica coupon (endpoint pubblico esercente)
+      summary: Anteprima coupon (endpoint pubblico esercente, sola lettura)
       description: |
         Restituisce le info del coupon senza richiedere autenticazione JWT.
-        Usato dall'esercente per verificare il coupon prima di riscattarlo.
+        Usato dall'esercente per verificare il coupon prima del riscatto.
         Sicurezza tramite opacita del token (UUID v4, 122 bit di entropia).
+        Di sola lettura: il riscatto effettivo passa esclusivamente da
+        POST /market/business/redeem/{token} (cassiere autenticato), che
+        verifica la proprieta dell'offerta.
       security: []
       parameters:
         - name: token
@@ -4027,44 +4030,6 @@ paths:
                 $ref: '#/components/schemas/CouponRedeemInfo'
         '404':
           description: Token non trovato
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    post:
-      tags: [market]
-      summary: Riscatta coupon (endpoint pubblico esercente)
-      description: |
-        Segna il coupon come redeemed. Non richiede autenticazione JWT.
-        Risponde 409 se il coupon e gia stato usato o e scaduto.
-      security: []
-      parameters:
-        - name: token
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        '200':
-          description: Coupon riscattato
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CouponRedeemInfo'
-        '404':
-          description: Token non trovato
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: |
-            Coupon gia usato (COUPON_ALREADY_REDEEMED) o scaduto (COUPON_EXPIRED)
           content:
             application/json:
               schema:

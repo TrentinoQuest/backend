@@ -189,6 +189,11 @@ export async function getRedeemInfo(token: string): Promise<{
  * dello stesso token non possano entrambi riuscire (il vecchio findOne +
  * save aveva questa race). In caso di fallimento distingue il motivo
  * (inesistente, gia' riscattato, scaduto) per dare il codice corretto.
+ *
+ * E' il punto di scrittura unico del riscatto: l'unico chiamante e' il
+ * flusso cassiere autenticato (redeemCouponForBusiness), che vi accede
+ * solo dopo aver verificato la proprieta' dell'offerta. Non esiste piu'
+ * un riscatto pubblico senza controllo di proprieta'.
  */
 async function atomicRedeemByToken(token: string): Promise<ICoupon> {
   const now = new Date();
@@ -207,16 +212,6 @@ async function atomicRedeemByToken(token: string): Promise<ICoupon> {
     throw new ConflictError('Coupon scaduto', 'COUPON_EXPIRED');
   }
   return coupon;
-}
-
-export async function redeemCoupon(token: string): Promise<CouponView> {
-  const coupon = await atomicRedeemByToken(token);
-  const offer = coupon.offerId as unknown as {
-    title?: string;
-    businessId?: Types.ObjectId;
-  } | null;
-  const businessName = await findBusinessName(offer?.businessId);
-  return serializeCoupon(coupon, offer?.title ?? '', businessName);
 }
 
 /* ------------------------------ Lato cassiere --------------------------- */

@@ -7,7 +7,6 @@ import {
   purchaseOfferHandler,
   getMyCouponsHandler,
   getRedeemInfoHandler,
-  redeemCouponHandler,
   getCouponInfoForBusinessHandler,
   redeemCouponForBusinessHandler,
 } from '../controllers/market.controller';
@@ -25,10 +24,11 @@ export function createMarketRouter(): Router {
   );
   router.get('/market/my-coupons', authenticate, requireRole(UserRole.PLAYER), getMyCouponsHandler);
 
-  // Endpoint pubblici per esercenti (nessuna auth JWT, rate limited
-  // per impedire il brute force sui token)
+  // Anteprima pubblica del coupon per l'esercente (nessuna auth JWT, rate
+  // limited per impedire il brute force sui token). E' di sola lettura: il
+  // riscatto effettivo passa esclusivamente dal flusso cassiere autenticato
+  // sottostante, che verifica la proprieta dell'offerta.
   router.get('/market/redeem/:token', redeemRateLimiter, getRedeemInfoHandler);
-  router.post('/market/redeem/:token', redeemRateLimiter, redeemCouponHandler);
 
   // Lato cassiere: l'attivita autenticata scansiona il QR del coupon, ne
   // verifica la validita e lo riscatta, solo se appartiene a una propria
