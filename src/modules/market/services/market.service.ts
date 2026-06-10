@@ -29,6 +29,31 @@ function serializeCoupon(coupon: ICoupon, offerTitle?: string, businessName?: st
   };
 }
 
+/**
+ * Schema CouponRedeemInfo dello swagger: payload PIATTO mostrato
+ * all'esercente prima del riscatto. Non in shared-types: definito qui
+ * finche' non viene esportato dal pacchetto.
+ */
+export interface CouponRedeemInfo {
+  token: string;
+  status: ICoupon['status'];
+  expiresAt: string;
+  offerTitle: string;
+  businessName: string;
+  redeemedAt: string | null;
+}
+
+function toRedeemInfo(coupon: ICoupon, offerTitle: string, businessName: string): CouponRedeemInfo {
+  return {
+    token: coupon.token,
+    status: coupon.status,
+    expiresAt: coupon.expiresAt.toISOString(),
+    offerTitle,
+    businessName,
+    redeemedAt: coupon.redeemedAt?.toISOString() ?? null,
+  };
+}
+
 export async function listOffersForMarket(): Promise<
   {
     id: string;
@@ -159,11 +184,7 @@ async function findBusinessName(businessId: Types.ObjectId | undefined): Promise
   return business?.businessName ?? '';
 }
 
-export async function getRedeemInfo(token: string): Promise<{
-  coupon: CouponView;
-  offerTitle: string;
-  businessName: string;
-}> {
+export async function getRedeemInfo(token: string): Promise<CouponRedeemInfo> {
   const coupon = await Coupon.findOne({ token }).populate('offerId');
   if (!coupon) throw new NotFoundError('Coupon non trovato', 'COUPON_NOT_FOUND');
 
@@ -175,11 +196,7 @@ export async function getRedeemInfo(token: string): Promise<{
 
   const businessName = await findBusinessName(offer?.businessId);
 
-  return {
-    coupon: serializeCoupon(coupon, offer?.title ?? '', businessName),
-    offerTitle: offer?.title ?? '',
-    businessName,
-  };
+  return toRedeemInfo(coupon, offer?.title ?? '', businessName);
 }
 
 /**
@@ -257,7 +274,7 @@ async function loadOwnedCoupon(
 export async function getCouponInfoForBusiness(
   businessId: string,
   token: string,
-): Promise<{ coupon: CouponView; offerTitle: string; businessName: string }> {
+): Promise<CouponRedeemInfo> {
   const { coupon, offerTitle, businessName } = await loadOwnedCoupon(businessId, token);
 
   if (coupon.status === 'active' && coupon.expiresAt.getTime() < Date.now()) {
@@ -265,11 +282,7 @@ export async function getCouponInfoForBusiness(
     coupon.status = 'expired';
   }
 
-  return {
-    coupon: serializeCoupon(coupon, offerTitle, businessName),
-    offerTitle,
-    businessName,
-  };
+  return toRedeemInfo(coupon, offerTitle, businessName);
 }
 
 /**

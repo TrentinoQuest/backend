@@ -198,7 +198,8 @@ describe('getRedeemInfo', () => {
     const info = await getRedeemInfo(coupon.token);
 
     expect(info.businessName).not.toBe('');
-    expect(info.coupon.businessName).toBe(info.businessName);
+    expect(info.token).toBe(coupon.token);
+    expect(info.status).toBe('active');
   });
 });
 
@@ -233,7 +234,7 @@ describe('getCouponInfoForBusiness', () => {
     const coupon = await purchaseOffer(playerId, offerId);
 
     const info = await getCouponInfoForBusiness(String(bizId), coupon.token);
-    expect(info.coupon.status).toBe('active');
+    expect(info.status).toBe('active');
     expect(info.businessName).not.toBe('');
 
     // Non deve aver consumato il coupon: resta riscattabile.
@@ -253,7 +254,7 @@ describe('getCouponInfoForBusiness', () => {
     );
 
     const info = await getCouponInfoForBusiness(String(bizId), coupon.token);
-    expect(info.coupon.status).toBe('expired');
+    expect(info.status).toBe('expired');
   });
 });
 
